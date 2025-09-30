@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "WebFetch(domain:www.aliexpress.com)",
+      "WebSearch",
+      "Bash(bash:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
