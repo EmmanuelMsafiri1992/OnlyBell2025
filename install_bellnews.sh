@@ -110,52 +110,199 @@ check_root() {
 
 # PHASE 0: COMPLETE SYSTEM CLEANUP
 phase0_complete_cleanup() {
-    log_info "🧹 PHASE 0: Complete System Cleanup"
+    log_info "🧹 PHASE 0: Complete System Cleanup & Preparation"
+    log "This ensures a clean slate for installation, removing all previous Bell News installations"
 
-    # Stop all Bell News related processes and services
-    log "Stopping all Bell News processes and services..."
-    pkill -f "vcns_timer_web.py" 2>/dev/null || true
-    pkill -f "nanopi_monitor.py" 2>/dev/null || true
-    pkill -f "nano_web_timer.py" 2>/dev/null || true
-    pkill -f "bellnews" 2>/dev/null || true
+    # ============================================
+    # STEP 1: Stop all running processes
+    # ============================================
+    log "Step 1/7: Stopping all Bell News processes and services..."
 
-    # Stop and disable services
-    systemctl stop bellnews 2>/dev/null || true
-    systemctl disable bellnews 2>/dev/null || true
-    systemctl stop bell-news 2>/dev/null || true
-    systemctl disable bell-news 2>/dev/null || true
+    # Kill all Python processes related to Bell News
+    KILLED_PROCS=0
+    if pgrep -f "vcns_timer_web.py" >/dev/null 2>&1; then
+        pkill -9 -f "vcns_timer_web.py" 2>/dev/null && KILLED_PROCS=$((KILLED_PROCS + 1))
+        log "  ✅ Stopped vcns_timer_web.py processes"
+    fi
 
-    # Remove all systemd service files
-    rm -f /etc/systemd/system/bellnews.service 2>/dev/null || true
-    rm -f /etc/systemd/system/bell-news.service 2>/dev/null || true
-    rm -f /etc/systemd/system/vcns-timer.service 2>/dev/null || true
-    systemctl daemon-reload 2>/dev/null || true
+    if pgrep -f "nanopi_monitor.py" >/dev/null 2>&1; then
+        pkill -9 -f "nanopi_monitor.py" 2>/dev/null && KILLED_PROCS=$((KILLED_PROCS + 1))
+        log "  ✅ Stopped nanopi_monitor.py processes"
+    fi
 
-    # Remove all installation directories
-    log "Removing all previous installations..."
-    rm -rf /opt/bellnews 2>/dev/null || true
-    rm -rf /opt/BellNews* 2>/dev/null || true
-    rm -rf /usr/local/bellnews 2>/dev/null || true
-    rm -rf /home/*/BellNews* 2>/dev/null || true
-    rm -rf /home/*/bellnews* 2>/dev/null || true
-    rm -rf /home/*/OnlyBell* 2>/dev/null || true
+    if pgrep -f "nano_web_timer.py" >/dev/null 2>&1; then
+        pkill -9 -f "nano_web_timer.py" 2>/dev/null && KILLED_PROCS=$((KILLED_PROCS + 1))
+        log "  ✅ Stopped nano_web_timer.py processes"
+    fi
 
-    # Remove temporary directories
-    rm -rf /tmp/OnlyBell* 2>/dev/null || true
-    rm -rf /tmp/BellNews* 2>/dev/null || true
-    rm -rf /tmp/bellnews* 2>/dev/null || true
+    # Kill any other bellnews related processes
+    pkill -9 -f "bellnews" 2>/dev/null || true
 
-    # Remove log directories
-    rm -rf /var/log/bellnews 2>/dev/null || true
+    log "  ✅ Stopped $KILLED_PROCS Bell News processes"
+    sleep 2  # Give processes time to fully terminate
 
-    # Remove any Python cache
+    # ============================================
+    # STEP 2: Stop and disable systemd services
+    # ============================================
+    log "Step 2/7: Stopping and disabling systemd services..."
+
+    SERVICES_FOUND=0
+    if systemctl list-units --all | grep -q bellnews; then
+        systemctl stop bellnews 2>/dev/null && log "  ✅ Stopped bellnews service"
+        systemctl disable bellnews 2>/dev/null && log "  ✅ Disabled bellnews service"
+        SERVICES_FOUND=$((SERVICES_FOUND + 1))
+    fi
+
+    if systemctl list-units --all | grep -q bell-news; then
+        systemctl stop bell-news 2>/dev/null && log "  ✅ Stopped bell-news service"
+        systemctl disable bell-news 2>/dev/null && log "  ✅ Disabled bell-news service"
+        SERVICES_FOUND=$((SERVICES_FOUND + 1))
+    fi
+
+    if systemctl list-units --all | grep -q vcns-timer; then
+        systemctl stop vcns-timer 2>/dev/null && log "  ✅ Stopped vcns-timer service"
+        systemctl disable vcns-timer 2>/dev/null && log "  ✅ Disabled vcns-timer service"
+        SERVICES_FOUND=$((SERVICES_FOUND + 1))
+    fi
+
+    if [[ $SERVICES_FOUND -eq 0 ]]; then
+        log "  ℹ️  No systemd services found (clean system)"
+    fi
+
+    # ============================================
+    # STEP 3: Remove systemd service files
+    # ============================================
+    log "Step 3/7: Removing systemd service files..."
+
+    SERVICE_FILES_REMOVED=0
+    for service_file in /etc/systemd/system/bellnews.service \
+                        /etc/systemd/system/bell-news.service \
+                        /etc/systemd/system/vcns-timer.service; do
+        if [[ -f "$service_file" ]]; then
+            rm -f "$service_file" 2>/dev/null && SERVICE_FILES_REMOVED=$((SERVICE_FILES_REMOVED + 1))
+            log "  ✅ Removed $(basename $service_file)"
+        fi
+    done
+
+    if [[ $SERVICE_FILES_REMOVED -gt 0 ]]; then
+        systemctl daemon-reload 2>/dev/null
+        log "  ✅ Reloaded systemd daemon"
+    else
+        log "  ℹ️  No service files to remove (clean system)"
+    fi
+
+    # ============================================
+    # STEP 4: Remove installation directories
+    # ============================================
+    log "Step 4/7: Removing previous installation directories..."
+
+    DIRS_REMOVED=0
+    INSTALL_DIRS=(
+        "/opt/bellnews"
+        "/opt/BellNews*"
+        "/usr/local/bellnews"
+        "/home/*/BellNews*"
+        "/home/*/bellnews*"
+        "/home/*/OnlyBell*"
+    )
+
+    for dir_pattern in "${INSTALL_DIRS[@]}"; do
+        # Use find to handle wildcards properly
+        for dir in $dir_pattern; do
+            if [[ -d "$dir" ]]; then
+                SPACE=$(du -sh "$dir" 2>/dev/null | awk '{print $1}')
+                rm -rf "$dir" 2>/dev/null && {
+                    log "  ✅ Removed $dir (freed $SPACE)"
+                    DIRS_REMOVED=$((DIRS_REMOVED + 1))
+                }
+            fi
+        done
+    done
+
+    if [[ $DIRS_REMOVED -eq 0 ]]; then
+        log "  ℹ️  No installation directories found (clean system)"
+    else
+        log "  ✅ Removed $DIRS_REMOVED installation directories"
+    fi
+
+    # ============================================
+    # STEP 5: Remove temporary directories
+    # ============================================
+    log "Step 5/7: Cleaning temporary directories..."
+
+    TMP_CLEANED=0
+    TMP_PATTERNS=(
+        "/tmp/OnlyBell*"
+        "/tmp/BellNews*"
+        "/tmp/bellnews*"
+    )
+
+    for tmp_pattern in "${TMP_PATTERNS[@]}"; do
+        for tmp_dir in $tmp_pattern; do
+            if [[ -e "$tmp_dir" ]]; then
+                rm -rf "$tmp_dir" 2>/dev/null && TMP_CLEANED=$((TMP_CLEANED + 1))
+                log "  ✅ Cleaned $(basename $tmp_dir)"
+            fi
+        done
+    done
+
+    if [[ $TMP_CLEANED -eq 0 ]]; then
+        log "  ℹ️  No temporary files found (clean system)"
+    else
+        log "  ✅ Cleaned $TMP_CLEANED temporary items"
+    fi
+
+    # ============================================
+    # STEP 6: Remove log directories
+    # ============================================
+    log "Step 6/7: Removing old log directories..."
+
+    if [[ -d "/var/log/bellnews" ]]; then
+        LOG_SIZE=$(du -sh "/var/log/bellnews" 2>/dev/null | awk '{print $1}')
+        rm -rf "/var/log/bellnews" 2>/dev/null && log "  ✅ Removed /var/log/bellnews (freed $LOG_SIZE)"
+    else
+        log "  ℹ️  No log directories found (clean system)"
+    fi
+
+    # ============================================
+    # STEP 7: Clean Python cache and cron jobs
+    # ============================================
+    log "Step 7/7: Cleaning Python cache and scheduled jobs..."
+
+    # Remove Python cache
+    CACHE_CLEANED=$(find /opt -name "__pycache__" -type d 2>/dev/null | wc -l)
     find /opt -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
     find /tmp -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-    # Clean any old cron jobs
-    crontab -l 2>/dev/null | grep -v bellnews | crontab - 2>/dev/null || true
+    if [[ $CACHE_CLEANED -gt 0 ]]; then
+        log "  ✅ Cleaned $CACHE_CLEANED Python cache directories"
+    fi
 
-    log_success "✅ Phase 0 Complete: System completely cleaned!"
+    # Clean cron jobs
+    if crontab -l 2>/dev/null | grep -q bellnews; then
+        crontab -l 2>/dev/null | grep -v bellnews | crontab - 2>/dev/null
+        log "  ✅ Removed Bell News cron jobs"
+    else
+        log "  ℹ️  No cron jobs to clean"
+    fi
+
+    # ============================================
+    # CLEANUP SUMMARY
+    # ============================================
+    log ""
+    log "📊 Cleanup Summary:"
+    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log "  • Processes stopped: $KILLED_PROCS"
+    log "  • Services removed: $SERVICES_FOUND"
+    log "  • Service files deleted: $SERVICE_FILES_REMOVED"
+    log "  • Installation dirs removed: $DIRS_REMOVED"
+    log "  • Temporary files cleaned: $TMP_CLEANED"
+    log "  • Python cache cleaned: $CACHE_CLEANED dirs"
+    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log ""
+
+    log_success "✅ Phase 0 Complete: System completely cleaned and ready for fresh installation!"
+    sleep 2  # Give user time to see the summary
 }
 
 # PHASE 1: SYSTEM PREPARATION
