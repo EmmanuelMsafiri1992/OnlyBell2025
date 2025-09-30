@@ -246,20 +246,58 @@ phase3_clone_repository() {
         safe_run "rm -f bellnews.zip" "Cleanup"
     fi
 
-    # Navigate to application directory
-    # Check if files are in root or bellapp subdirectory
+    # Intelligent directory detection - find where vcns_timer_web.py actually is
+    log "Detecting application file structure..."
+
+    # Global variable to store the source directory
+    export SOURCE_DIR=""
+
+    # Check multiple possible locations
     if [[ -f "/tmp/OnlyBell2025/vcns_timer_web.py" ]]; then
-        cd /tmp/OnlyBell2025
-        log "✅ Using root directory for installation files"
-    elif [[ -d "/tmp/OnlyBell2025/bellapp" ]]; then
-        cd /tmp/OnlyBell2025/bellapp
-        log "✅ Using bellapp subdirectory for installation files"
+        SOURCE_DIR="/tmp/OnlyBell2025"
+        log "✅ Found application files in root directory: $SOURCE_DIR"
+    elif [[ -f "/tmp/OnlyBell2025/bellapp/vcns_timer_web.py" ]]; then
+        SOURCE_DIR="/tmp/OnlyBell2025/bellapp"
+        log "✅ Found application files in bellapp subdirectory: $SOURCE_DIR"
     else
-        log_error "❌ Cannot find installation files in downloaded repository"
-        exit 1
+        # Search recursively for vcns_timer_web.py
+        log "Searching for application files recursively..."
+        FOUND_PATH=$(find /tmp/OnlyBell2025 -name "vcns_timer_web.py" -type f 2>/dev/null | head -1)
+        if [[ -n "$FOUND_PATH" ]]; then
+            SOURCE_DIR=$(dirname "$FOUND_PATH")
+            log "✅ Found application files at: $SOURCE_DIR"
+        else
+            log_error "❌ Cannot find vcns_timer_web.py in downloaded repository"
+            log_error "Repository structure:"
+            ls -la /tmp/OnlyBell2025/ 2>/dev/null || true
+            log_error "Trying to continue anyway with root directory..."
+            SOURCE_DIR="/tmp/OnlyBell2025"
+        fi
     fi
 
-    log_success "✅ Phase 3 Complete: Repository downloaded successfully"
+    # Verify we found critical files
+    cd "$SOURCE_DIR"
+    log "Verifying critical application files..."
+
+    CRITICAL_FILES=("vcns_timer_web.py" "network_manager.py")
+    FOUND_COUNT=0
+
+    for file in "${CRITICAL_FILES[@]}"; do
+        if [[ -f "$SOURCE_DIR/$file" ]]; then
+            log "✅ Found: $file"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+        else
+            log_warning "⚠️ Missing: $file (may cause issues)"
+        fi
+    done
+
+    if [[ $FOUND_COUNT -eq 0 ]]; then
+        log_error "❌ No critical application files found!"
+        log_error "Available files in $SOURCE_DIR:"
+        ls -la "$SOURCE_DIR" 2>/dev/null || true
+    fi
+
+    log_success "✅ Phase 3 Complete: Repository downloaded from $SOURCE_DIR"
 }
 
 # PHASE 4: DEPENDENCY INSTALLATION
@@ -596,8 +634,42 @@ phase6_bcrypt_installation() {
 phase7_application_installation() {
     log_info "🏗️ PHASE 7: Bell News Application Installation"
 
-    # Ensure we're in the right directory
-    cd /tmp/OnlyBell2025/bellapp
+    # Use the SOURCE_DIR from Phase 3, or try to detect it again
+    if [[ -z "$SOURCE_DIR" ]] || [[ ! -d "$SOURCE_DIR" ]]; then
+        log_warning "SOURCE_DIR not set, attempting to detect it again..."
+
+        if [[ -f "/tmp/OnlyBell2025/vcns_timer_web.py" ]]; then
+            SOURCE_DIR="/tmp/OnlyBell2025"
+        elif [[ -f "/tmp/OnlyBell2025/bellapp/vcns_timer_web.py" ]]; then
+            SOURCE_DIR="/tmp/OnlyBell2025/bellapp"
+        else
+            FOUND_PATH=$(find /tmp/OnlyBell2025 -name "vcns_timer_web.py" -type f 2>/dev/null | head -1)
+            if [[ -n "$FOUND_PATH" ]]; then
+                SOURCE_DIR=$(dirname "$FOUND_PATH")
+            else
+                SOURCE_DIR="/tmp/OnlyBell2025"
+            fi
+        fi
+    fi
+
+    log "Using source directory: $SOURCE_DIR"
+
+    # Verify source directory exists and has content
+    if [[ ! -d "$SOURCE_DIR" ]]; then
+        log_error "❌ Source directory does not exist: $SOURCE_DIR"
+        log_error "Attempting emergency recovery..."
+
+        # Try to find ANY directory with Python files
+        SOURCE_DIR=$(find /tmp -type f -name "vcns_timer_web.py" 2>/dev/null | head -1 | xargs dirname)
+
+        if [[ -z "$SOURCE_DIR" ]] || [[ ! -d "$SOURCE_DIR" ]]; then
+            log_error "❌ Cannot locate application files anywhere!"
+            log_error "Creating minimal installation structure..."
+            SOURCE_DIR=""
+        else
+            log "✅ Emergency recovery found files at: $SOURCE_DIR"
+        fi
+    fi
 
     # Create application directories
     log "Creating application directories..."
@@ -608,16 +680,112 @@ phase7_application_installation() {
     mkdir -p "$INSTALL_DIR/network_backups" 2>/dev/null || true
     mkdir -p "/var/log/bellnews" 2>/dev/null || true
 
-    # Copy all application files
-    log "Installing Bell News application files..."
-    cp -r * "$INSTALL_DIR/" 2>/dev/null || true
+    # Copy application files if source directory exists and has content
+    if [[ -n "$SOURCE_DIR" ]] && [[ -d "$SOURCE_DIR" ]]; then
+        log "Installing Bell News application files from: $SOURCE_DIR"
+
+        # Change to source directory
+        cd "$SOURCE_DIR" 2>/dev/null || {
+            log_error "Cannot access source directory: $SOURCE_DIR"
+            SOURCE_DIR=""
+        }
+
+        if [[ -n "$SOURCE_DIR" ]]; then
+            # Copy ALL Python files (application scripts)
+            log "Copying Python application files..."
+            for pyfile in *.py; do
+                if [[ -f "$pyfile" ]]; then
+                    cp -v "$pyfile" "$INSTALL_DIR/" && log "  ✅ Copied: $pyfile"
+                fi
+            done
+
+            # Copy static directory with COMPLETE structure preservation
+            if [[ -d "static" ]]; then
+                log "Copying static assets (CSS, JS, audio, images)..."
+
+                # Remove old static dir if exists to avoid conflicts
+                rm -rf "$INSTALL_DIR/static" 2>/dev/null || true
+
+                # Copy entire static directory recursively with ALL subdirectories
+                cp -rv static "$INSTALL_DIR/" 2>&1 | grep -v "^'" | head -10
+
+                # Verify critical subdirectories
+                if [[ -d "$INSTALL_DIR/static/audio" ]]; then
+                    AUDIO_COUNT=$(ls -1 "$INSTALL_DIR/static/audio"/*.mp3 2>/dev/null | wc -l)
+                    log "  ✅ Static directory copied with audio files: $AUDIO_COUNT MP3 files"
+                else
+                    log_warning "  ⚠️ Audio directory missing, creating it..."
+                    mkdir -p "$INSTALL_DIR/static/audio"
+                fi
+
+                if [[ -d "$INSTALL_DIR/static/images" ]]; then
+                    log "  ✅ Images directory present"
+                else
+                    mkdir -p "$INSTALL_DIR/static/images"
+                fi
+
+                # Verify JS and CSS files
+                JS_COUNT=$(ls -1 "$INSTALL_DIR/static"/*.js 2>/dev/null | wc -l)
+                CSS_COUNT=$(ls -1 "$INSTALL_DIR/static"/*.css 2>/dev/null | wc -l)
+                log "  ✅ JavaScript files: $JS_COUNT, CSS files: $CSS_COUNT"
+            else
+                log_warning "⚠️ No static directory found in source!"
+                log "Creating empty static structure..."
+                mkdir -p "$INSTALL_DIR/static/audio"
+                mkdir -p "$INSTALL_DIR/static/images"
+            fi
+
+            # Copy templates directory with all HTML files
+            if [[ -d "templates" ]]; then
+                log "Copying HTML templates..."
+
+                # Remove old templates dir if exists
+                rm -rf "$INSTALL_DIR/templates" 2>/dev/null || true
+
+                # Copy entire templates directory
+                cp -rv templates "$INSTALL_DIR/" 2>&1 | grep -v "^'"
+
+                # Verify templates
+                TEMPLATE_COUNT=$(ls -1 "$INSTALL_DIR/templates"/*.html "$INSTALL_DIR/templates"/*.htm 2>/dev/null | wc -l)
+                log "  ✅ Templates copied: $TEMPLATE_COUNT HTML files"
+            else
+                log_warning "⚠️ No templates directory found in source!"
+                mkdir -p "$INSTALL_DIR/templates"
+            fi
+
+            # Copy shell scripts (for updates and maintenance)
+            log "Copying shell scripts..."
+            for script in *.sh; do
+                if [[ -f "$script" ]]; then
+                    cp -v "$script" "$INSTALL_DIR/" && log "  ✅ Copied: $script"
+                fi
+            done
+
+            # Copy any existing JSON config files (but don't overwrite critical ones)
+            log "Checking for configuration files..."
+            for jsonfile in *.json; do
+                if [[ -f "$jsonfile" ]] && [[ "$jsonfile" != "alarms.json" ]] && [[ "$jsonfile" != "users.json" ]]; then
+                    cp -v "$jsonfile" "$INSTALL_DIR/" && log "  ✅ Copied: $jsonfile"
+                fi
+            done
+
+            log_success "✅ Application files copied successfully from $SOURCE_DIR"
+        fi
+    else
+        log_error "❌ Cannot copy files - source directory invalid: $SOURCE_DIR"
+        log_error "Creating minimal structure for manual intervention..."
+    fi
 
     # Set proper permissions
+    log "Setting file permissions..."
     chown -R root:root "$INSTALL_DIR" 2>/dev/null || true
     chmod -R 755 "$INSTALL_DIR" 2>/dev/null || true
     chmod +x "$INSTALL_DIR"/*.py 2>/dev/null || true
     chmod +x "$INSTALL_DIR"/*.sh 2>/dev/null || true
     chmod 777 "$INSTALL_DIR/logs" 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR/static" 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR/static/audio" 2>/dev/null || true
+    chmod 755 "$INSTALL_DIR/templates" 2>/dev/null || true
 
     # Create proper configuration files
     log "Setting up configuration files..."
@@ -625,14 +793,143 @@ phase7_application_installation() {
     # Ensure alarms.json is in correct array format
     echo '[]' > "$INSTALL_DIR/alarms.json"
     chmod 666 "$INSTALL_DIR/alarms.json"
+    log "✅ Created alarms.json"
 
     # Create default config.json if it doesn't exist
     if [[ ! -f "$INSTALL_DIR/config.json" ]]; then
         echo '{}' > "$INSTALL_DIR/config.json"
+        chmod 666 "$INSTALL_DIR/config.json"
+        log "✅ Created config.json"
     fi
-    chmod 666 "$INSTALL_DIR/config.json"
 
-    log_success "✅ Phase 7 Complete: Bell News application installed!"
+    # Create users.json if it doesn't exist
+    if [[ ! -f "$INSTALL_DIR/users.json" ]]; then
+        echo '[]' > "$INSTALL_DIR/users.json"
+        chmod 666 "$INSTALL_DIR/users.json"
+        log "✅ Created users.json"
+    fi
+
+    # Verify critical files exist
+    log "Verifying installation..."
+    INSTALL_SUCCESS=true
+    WARNINGS=0
+
+    # Check main application file
+    if [[ -f "$INSTALL_DIR/vcns_timer_web.py" ]]; then
+        log "✅ Main application file present: vcns_timer_web.py"
+    else
+        log_error "❌ CRITICAL: Missing vcns_timer_web.py!"
+        INSTALL_SUCCESS=false
+    fi
+
+    # Check network manager
+    if [[ -f "$INSTALL_DIR/network_manager.py" ]]; then
+        log "✅ Network manager present: network_manager.py"
+    else
+        log_warning "⚠️ Missing network_manager.py - network features may not work"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+
+    # Check static directory and contents
+    if [[ -d "$INSTALL_DIR/static" ]]; then
+        log "✅ Static directory exists"
+
+        # Check for audio files
+        AUDIO_FILES=$(ls -1 "$INSTALL_DIR/static/audio"/*.mp3 2>/dev/null | wc -l)
+        if [[ $AUDIO_FILES -gt 0 ]]; then
+            log "✅ Audio files present: $AUDIO_FILES files in static/audio/"
+            ls -lh "$INSTALL_DIR/static/audio"/*.mp3 2>/dev/null | awk '{print "    📢", $9, "-", $5}'
+        else
+            log_warning "⚠️ No audio files found in static/audio/ - alarms won't have sounds!"
+            WARNINGS=$((WARNINGS + 1))
+        fi
+
+        # Check for JavaScript files
+        JS_FILES=$(ls -1 "$INSTALL_DIR/static"/*.js 2>/dev/null | wc -l)
+        if [[ $JS_FILES -gt 0 ]]; then
+            log "✅ JavaScript files present: $JS_FILES files"
+        else
+            log_warning "⚠️ No JavaScript files found - frontend may not work!"
+            WARNINGS=$((WARNINGS + 1))
+        fi
+
+        # Check for CSS files
+        CSS_FILES=$(ls -1 "$INSTALL_DIR/static"/*.css 2>/dev/null | wc -l)
+        if [[ $CSS_FILES -gt 0 ]]; then
+            log "✅ CSS files present: $CSS_FILES files"
+        else
+            log_warning "⚠️ No CSS files found - UI styling missing!"
+            WARNINGS=$((WARNINGS + 1))
+        fi
+    else
+        log_error "❌ Static directory missing - creating it"
+        mkdir -p "$INSTALL_DIR/static/audio"
+        mkdir -p "$INSTALL_DIR/static/images"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+
+    # Check templates directory and HTML files
+    if [[ -d "$INSTALL_DIR/templates" ]]; then
+        TEMPLATE_FILES=$(ls -1 "$INSTALL_DIR/templates"/*.html "$INSTALL_DIR/templates"/*.htm 2>/dev/null | wc -l)
+        if [[ $TEMPLATE_FILES -gt 0 ]]; then
+            log "✅ Templates directory exists with $TEMPLATE_FILES HTML files"
+            ls -1 "$INSTALL_DIR/templates"/*.html "$INSTALL_DIR/templates"/*.htm 2>/dev/null | awk '{print "    📄", $1}'
+        else
+            log_warning "⚠️ Templates directory empty - web interface won't work!"
+            WARNINGS=$((WARNINGS + 1))
+        fi
+    else
+        log_error "❌ Templates directory missing - web interface won't work!"
+        mkdir -p "$INSTALL_DIR/templates"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+
+    # Check configuration files
+    if [[ -f "$INSTALL_DIR/alarms.json" ]]; then
+        log "✅ Alarms configuration file present"
+    fi
+
+    if [[ -f "$INSTALL_DIR/config.json" ]]; then
+        log "✅ System configuration file present"
+    fi
+
+    if [[ -f "$INSTALL_DIR/users.json" ]]; then
+        log "✅ Users database file present"
+    fi
+
+    # List Python modules installed
+    log ""
+    log "📊 Installation Summary:"
+    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    PY_COUNT=$(ls -1 "$INSTALL_DIR"/*.py 2>/dev/null | wc -l)
+    log "Python modules: $PY_COUNT files"
+    ls -1 "$INSTALL_DIR"/*.py 2>/dev/null | awk '{print "  •", $1}'
+
+    log ""
+    log "Static assets:"
+    log "  • JavaScript: $JS_FILES files"
+    log "  • CSS: $CSS_FILES files"
+    log "  • Audio: $AUDIO_FILES MP3 files"
+
+    log ""
+    log "Templates: $TEMPLATE_FILES HTML files"
+
+    log ""
+    log "Directory structure in $INSTALL_DIR:"
+    ls -la "$INSTALL_DIR" 2>/dev/null | grep -E "^d" | awk '{print "  📁", $9}'
+
+    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Final status
+    if $INSTALL_SUCCESS && [[ $WARNINGS -eq 0 ]]; then
+        log_success "✅ Phase 7 Complete: Bell News application installed PERFECTLY!"
+    elif $INSTALL_SUCCESS && [[ $WARNINGS -gt 0 ]]; then
+        log_warning "⚠️ Phase 7 Complete with $WARNINGS warnings - system may have limited functionality"
+    else
+        log_error "❌ Phase 7 Complete with ERRORS - manual intervention required!"
+        log_error "Please check the installation log and verify files manually"
+    fi
 }
 
 # PHASE 8: SYSTEMD SERVICE CONFIGURATION

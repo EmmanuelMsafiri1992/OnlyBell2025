@@ -8,7 +8,14 @@
       "Bash(python3:*)",
       "Bash(python:*)",
       "Bash(chmod:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//c/laragon/www/BellNews2025/newsapp/**)",
+      "Bash(php artisan:*)",
+      "Bash(composer install:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(php:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
