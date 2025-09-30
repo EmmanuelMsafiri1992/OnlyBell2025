@@ -18,8 +18,8 @@ INSTALL_DIR="/opt/bellnews"
 LOG_FILE="/tmp/bellnews_complete_install.log"
 PYTHON_CMD="python3"
 
-# Start comprehensive logging
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Initialize log file (but don't redirect all output to avoid process conflicts)
+echo "Bell News Installation Started: $(date)" > "$LOG_FILE"
 
 echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${PURPLE}║                🚀 BELL NEWS ONE-COMMAND INSTALLER 🚀         ║${NC}"
@@ -34,23 +34,33 @@ echo
 
 # Function to log messages with colors and timestamps
 log() {
-    echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] ✅${NC} $1"
+    local msg="${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] ✅${NC} $1"
+    echo -e "$msg"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SUCCESS: $1" >> "$LOG_FILE"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️${NC} $1"
+    local msg="${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️${NC} $1"
+    echo -e "$msg"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $1" >> "$LOG_FILE"
 }
 
 log_error() {
-    echo -e "${RED}[$(date '+%Y-%m-%d %H:%M:%S')] ❌${NC} $1"
+    local msg="${RED}[$(date '+%Y-%m-%d %H:%M:%S')] ❌${NC} $1"
+    echo -e "$msg"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" >> "$LOG_FILE"
 }
 
 log_info() {
-    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')] ℹ️${NC} $1"
+    local msg="${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')] ℹ️${NC} $1"
+    echo -e "$msg"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: $1" >> "$LOG_FILE"
 }
 
 log_success() {
-    echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] 🎉${NC} $1"
+    local msg="${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] 🎉${NC} $1"
+    echo -e "$msg"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SUCCESS: $1" >> "$LOG_FILE"
 }
 
 # Function to ensure a command never fails the script
