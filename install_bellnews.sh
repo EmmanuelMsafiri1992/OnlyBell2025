@@ -139,11 +139,23 @@ phase2_python_setup() {
     # Install Python and essential packages
     PYTHON_PACKAGES=(
         "python3" "python3-pip" "python3-dev" "python3-setuptools"
-        "python3-wheel" "python3-venv" "python3-distutils"
+        "python3-wheel" "python3-venv"
     )
+
+    # Optional packages (may not be available on all systems)
+    OPTIONAL_PYTHON_PACKAGES=("python3-distutils")
 
     for package in "${PYTHON_PACKAGES[@]}"; do
         safe_run "apt-get install -y $package -qq" "Installing $package"
+    done
+
+    # Try to install optional packages (don't fail if unavailable)
+    for package in "${OPTIONAL_PYTHON_PACKAGES[@]}"; do
+        if apt-get install -y "$package" -qq >/dev/null 2>&1; then
+            log "✅ Optional package $package: INSTALLED"
+        else
+            log "ℹ️ Optional package $package: SKIPPED (not available or not needed)"
+        fi
     done
 
     # Ensure pip is working and updated
