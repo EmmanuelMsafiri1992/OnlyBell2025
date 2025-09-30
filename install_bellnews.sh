@@ -180,8 +180,10 @@ phase3_clone_repository() {
     cd /tmp
     retry_run "git clone $REPO_URL" "Cloning repository" 3
 
-    # Verify clone success
-    if [[ ! -d "/tmp/OnlyBell2025/bellapp" ]]; then
+    # Check if clone was successful
+    if [[ -d "/tmp/OnlyBell2025" ]]; then
+        log "✅ Repository cloned successfully"
+    else
         log_error "❌ Repository clone failed - trying alternative method"
 
         # Alternative download method using wget
@@ -193,7 +195,17 @@ phase3_clone_repository() {
     fi
 
     # Navigate to application directory
-    cd /tmp/OnlyBell2025/bellapp
+    # Check if files are in root or bellapp subdirectory
+    if [[ -f "/tmp/OnlyBell2025/vcns_timer_web.py" ]]; then
+        cd /tmp/OnlyBell2025
+        log "✅ Using root directory for installation files"
+    elif [[ -d "/tmp/OnlyBell2025/bellapp" ]]; then
+        cd /tmp/OnlyBell2025/bellapp
+        log "✅ Using bellapp subdirectory for installation files"
+    else
+        log_error "❌ Cannot find installation files in downloaded repository"
+        exit 1
+    fi
 
     log_success "✅ Phase 3 Complete: Repository downloaded successfully"
 }
