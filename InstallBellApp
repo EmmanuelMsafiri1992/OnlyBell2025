@@ -273,7 +273,11 @@ install_bell_news() {
     show_progress $current_step $total_steps "Installing system dependencies"
     print_step "Installing required system libraries"
 
-    execute_step "apt-get install -y python3-flask python3-psutil python3-bcrypt python3-yaml python3-requests python3-pytz -qq" "Python system packages"
+    # Install Python packages individually to avoid stopping on single failures
+    PYTHON_SYSTEM_PACKAGES=("python3-flask" "python3-psutil" "python3-bcrypt" "python3-yaml" "python3-requests" "python3-pytz")
+    for package in "${PYTHON_SYSTEM_PACKAGES[@]}"; do
+        execute_step "apt-get install -y $package -qq" "Installing $package"
+    done
     execute_step "apt-get install -y libffi-dev libssl-dev libjpeg-dev zlib1g-dev alsa-utils pulseaudio-utils -qq" "Development libraries"
     execute_step "apt-get install -y libsdl2-dev libsdl2-mixer-dev python3-pygame -qq" "Audio system libraries"
 

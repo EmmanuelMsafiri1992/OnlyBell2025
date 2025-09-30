@@ -3,7 +3,7 @@
 # Complete setup from fresh NanoPi to working system with a single command
 # Usage: curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/OnlyBell2025/main/install_bellnews.sh | bash
 
-set -e
+# DO NOT USE set -e - we want to handle errors gracefully
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -98,17 +98,59 @@ check_root() {
     fi
 }
 
-# PHASE 1: SYSTEM PREPARATION
-phase1_system_preparation() {
-    log_info "🔧 PHASE 1: System Preparation & Updates"
+# PHASE 0: COMPLETE SYSTEM CLEANUP
+phase0_complete_cleanup() {
+    log_info "🧹 PHASE 0: Complete System Cleanup"
 
-    # Stop any existing Bell News processes
-    log "Stopping any existing Bell News processes..."
+    # Stop all Bell News related processes and services
+    log "Stopping all Bell News processes and services..."
     pkill -f "vcns_timer_web.py" 2>/dev/null || true
     pkill -f "nanopi_monitor.py" 2>/dev/null || true
     pkill -f "nano_web_timer.py" 2>/dev/null || true
-    safe_run "systemctl stop bellnews" "Stopping bellnews service"
-    sleep 3
+    pkill -f "bellnews" 2>/dev/null || true
+
+    # Stop and disable services
+    systemctl stop bellnews 2>/dev/null || true
+    systemctl disable bellnews 2>/dev/null || true
+    systemctl stop bell-news 2>/dev/null || true
+    systemctl disable bell-news 2>/dev/null || true
+
+    # Remove all systemd service files
+    rm -f /etc/systemd/system/bellnews.service 2>/dev/null || true
+    rm -f /etc/systemd/system/bell-news.service 2>/dev/null || true
+    rm -f /etc/systemd/system/vcns-timer.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
+    # Remove all installation directories
+    log "Removing all previous installations..."
+    rm -rf /opt/bellnews 2>/dev/null || true
+    rm -rf /opt/BellNews* 2>/dev/null || true
+    rm -rf /usr/local/bellnews 2>/dev/null || true
+    rm -rf /home/*/BellNews* 2>/dev/null || true
+    rm -rf /home/*/bellnews* 2>/dev/null || true
+    rm -rf /home/*/OnlyBell* 2>/dev/null || true
+
+    # Remove temporary directories
+    rm -rf /tmp/OnlyBell* 2>/dev/null || true
+    rm -rf /tmp/BellNews* 2>/dev/null || true
+    rm -rf /tmp/bellnews* 2>/dev/null || true
+
+    # Remove log directories
+    rm -rf /var/log/bellnews 2>/dev/null || true
+
+    # Remove any Python cache
+    find /opt -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+    find /tmp -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
+    # Clean any old cron jobs
+    crontab -l 2>/dev/null | grep -v bellnews | crontab - 2>/dev/null || true
+
+    log_success "✅ Phase 0 Complete: System completely cleaned!"
+}
+
+# PHASE 1: SYSTEM PREPARATION
+phase1_system_preparation() {
+    log_info "🔧 PHASE 1: System Preparation & Updates"
 
     # Update system packages
     log "Updating system package list..."
@@ -879,6 +921,9 @@ main() {
     check_root
 
     # Execute all installation phases
+    phase0_complete_cleanup
+    echo
+
     phase1_system_preparation
     echo
 
