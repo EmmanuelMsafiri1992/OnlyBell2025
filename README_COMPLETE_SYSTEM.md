@@ -26,7 +26,7 @@ git push origin main
 ### **Production (NanoPi)**
 ```bash
 # Update system
-cd ~/BellNews2025
+cd ~/OnlyBell2025
 git pull origin main
 cd bellapp
 sudo ./update_system.sh
@@ -34,8 +34,8 @@ sudo ./update_system.sh
 
 ### **First Time Installation (New NanoPi)**
 ```bash
-git clone https://github.com/yourusername/BellNews2025.git
-cd BellNews2025/bellapp
+git clone https://github.com/EmmanuelMsafiri1992/OnlyBell2025.git
+cd OnlyBell2025/bellapp
 chmod +x bellnews_installer.sh
 sudo ./bellnews_installer.sh install
 ```

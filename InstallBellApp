@@ -13,7 +13,7 @@ WHITE='\033[1;37m'
 NC='\033[0m'
 
 # Configuration
-REPO_URL="https://github.com/EmmanuelMsafiri1992/BellNews2025.git"
+REPO_URL="https://github.com/EmmanuelMsafiri1992/OnlyBell2025.git"
 INSTALL_DIR="/opt/bellnews"
 LOG_FILE="/tmp/bellnews_install.log"
 TEMP_DIR="/tmp/bellnews_setup"
@@ -262,7 +262,7 @@ install_bell_news() {
     if execute_step "git clone $REPO_URL bellnews" "Repository download"; then
         cd bellnews/bellapp
     else
-        execute_step "wget -q https://github.com/EmmanuelMsafiri1992/BellNews2025/archive/main.zip && unzip -q main.zip && mv BellNews2025-main/bellapp ." "Alternative download"
+        execute_step "wget -q https://github.com/EmmanuelMsafiri1992/OnlyBell2025/archive/main.zip && unzip -q main.zip && mv OnlyBell2025-main/bellapp ." "Alternative download"
     fi
 
     print_success "Bell News downloaded successfully"

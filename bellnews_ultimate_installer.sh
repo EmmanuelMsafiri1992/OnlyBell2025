@@ -542,7 +542,7 @@ cat > "$INSTALL_DIR/INSTALLATION_SUCCESS.txt" << EOF
    Status: sudo systemctl status bellnews
    Restart: sudo systemctl restart bellnews
    Logs: sudo journalctl -u bellnews -f
-   Update: cd ~/BellNews2025/bellapp && git pull && sudo ./update_system.sh
+   Update: cd ~/OnlyBell2025/bellapp && git pull && sudo ./update_system.sh
 
 📂 Installation Directory: $INSTALL_DIR
 📝 Log File: $LOG_FILE

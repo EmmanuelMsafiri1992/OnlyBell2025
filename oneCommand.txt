@@ -1,1 +1,1 @@
-curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/BellNews2025/main/bellapp/install_bellnews.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/OnlyBell2025/main/install_bellnews.sh | sudo bash

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Bell News One-Command Installer
 # Complete setup from fresh NanoPi to working system with a single command
-# Usage: curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/BellNews2025/main/bellapp/install_bellnews.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/OnlyBell2025/main/install_bellnews.sh | bash
 
 set -e
 
@@ -13,7 +13,7 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-REPO_URL="https://github.com/EmmanuelMsafiri1992/BellNews2025.git"
+REPO_URL="https://github.com/EmmanuelMsafiri1992/OnlyBell2025.git"
 INSTALL_DIR="/opt/bellnews"
 LOG_FILE="/tmp/bellnews_complete_install.log"
 PYTHON_CMD="python3"
@@ -93,7 +93,7 @@ retry_run() {
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         echo -e "${RED}This script must be run as root (use sudo)${NC}"
-        echo -e "${YELLOW}Usage: curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/BellNews2025/main/bellapp/install_bellnews.sh | sudo bash${NC}"
+        echo -e "${YELLOW}Usage: curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/OnlyBell2025/main/install_bellnews.sh | sudo bash${NC}"
         exit 1
     fi
 }
@@ -121,7 +121,7 @@ phase1_system_preparation() {
     # Install essential system tools
     log "Installing essential system tools..."
     ESSENTIAL_TOOLS=(
-        "curl" "wget" "git" "unzip" "sudo" "systemd" "systemctl"
+        "curl" "wget" "git" "unzip" "sudo" "systemd"
         "build-essential" "pkg-config" "cmake" "make" "gcc" "g++"
     )
 
@@ -158,9 +158,9 @@ phase3_clone_repository() {
     log_info "📦 PHASE 3: Repository Download"
 
     # Remove any existing installation
-    if [[ -d "/tmp/BellNews2025" ]]; then
+    if [[ -d "/tmp/OnlyBell2025" ]]; then
         log "Removing existing temporary download..."
-        rm -rf /tmp/BellNews2025
+        rm -rf /tmp/OnlyBell2025
     fi
 
     # Clone the repository
@@ -169,19 +169,19 @@ phase3_clone_repository() {
     retry_run "git clone $REPO_URL" "Cloning repository" 3
 
     # Verify clone success
-    if [[ ! -d "/tmp/BellNews2025/bellapp" ]]; then
+    if [[ ! -d "/tmp/OnlyBell2025/bellapp" ]]; then
         log_error "❌ Repository clone failed - trying alternative method"
 
         # Alternative download method using wget
         log "Trying direct download..."
-        retry_run "wget -q https://github.com/EmmanuelMsafiri1992/BellNews2025/archive/main.zip -O bellnews.zip" "Direct download"
+        retry_run "wget -q https://github.com/EmmanuelMsafiri1992/OnlyBell2025/archive/main.zip -O bellnews.zip" "Direct download"
         safe_run "unzip -q bellnews.zip" "Extracting archive"
-        safe_run "mv BellNews2025-main BellNews2025" "Moving files"
+        safe_run "mv OnlyBell2025-main OnlyBell2025" "Moving files"
         safe_run "rm -f bellnews.zip" "Cleanup"
     fi
 
     # Navigate to application directory
-    cd /tmp/BellNews2025/bellapp
+    cd /tmp/OnlyBell2025/bellapp
 
     log_success "✅ Phase 3 Complete: Repository downloaded successfully"
 }
@@ -521,7 +521,7 @@ phase7_application_installation() {
     log_info "🏗️ PHASE 7: Bell News Application Installation"
 
     # Ensure we're in the right directory
-    cd /tmp/BellNews2025/bellapp
+    cd /tmp/OnlyBell2025/bellapp
 
     # Create application directories
     log "Creating application directories..."
@@ -567,7 +567,7 @@ phase8_systemd_service() {
     cat > /etc/systemd/system/bellnews.service << 'EOF'
 [Unit]
 Description=Bell News Timer System - Complete Web Interface
-Documentation=https://github.com/EmmanuelMsafiri1992/BellNews2025
+Documentation=https://github.com/EmmanuelMsafiri1992/OnlyBell2025
 After=network-online.target sound.service
 Wants=network-online.target
 RequiresMountsFor=/opt/bellnews
@@ -622,8 +622,16 @@ EOF
 
     # Enable and configure service
     log "Configuring systemd service..."
-    safe_run "systemctl daemon-reload" "Reloading systemd daemon"
-    safe_run "systemctl enable bellnews" "Enabling bellnews service"
+
+    # Check if systemctl is available and working
+    if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+        safe_run "systemctl daemon-reload" "Reloading systemd daemon"
+        safe_run "systemctl enable bellnews" "Enabling bellnews service"
+        log "✅ Systemd service configured successfully"
+    else
+        log_warning "⚠️ systemctl not available, service will need manual start"
+        log_info "To start manually: cd /opt/bellnews && python3 vcns_timer_web.py"
+    fi
 
     log_success "✅ Phase 8 Complete: Systemd service configured!"
 }
@@ -706,25 +714,31 @@ phase10_service_startup() {
 
     # Start the Bell News service
     log "Starting Bell News service..."
-    safe_run "systemctl start bellnews" "Starting bellnews service"
 
-    # Wait for startup
-    log "Waiting for service initialization..."
-    sleep 15
+    # Check if systemctl is available
+    if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+        safe_run "systemctl start bellnews" "Starting bellnews service"
 
-    # Check service status
-    if systemctl is-active bellnews >/dev/null 2>&1; then
-        log_success "✅ Bell News service: RUNNING"
+        # Wait for startup
+        log "Waiting for service initialization..."
+        sleep 15
+
+        # Check service status
+        if systemctl is-active bellnews >/dev/null 2>&1; then
+            log_success "✅ Bell News service: RUNNING"
+        else
+            log_warning "⚠️ Service may need additional time to start"
+        fi
     else
-        log_warning "⚠️ Service may need additional time to start"
-
-        # Try manual start as fallback
-        log "Attempting manual service start..."
-        cd "$INSTALL_DIR" && nohup python3 vcns_timer_web.py > /var/log/bellnews/manual_start.log 2>&1 &
-        sleep 10
-
+        log_warning "⚠️ systemctl not available, starting manually..."
+        # Manual startup as fallback
+        cd /opt/bellnews
+        nohup python3 vcns_timer_web.py > /var/log/bellnews/manual_start.log 2>&1 &
+        sleep 5
         if pgrep -f "vcns_timer_web.py" >/dev/null; then
-            log_success "✅ Service started manually"
+            log_success "✅ Bell News started manually: RUNNING"
+        else
+            log_error "❌ Failed to start Bell News service"
         fi
     fi
 
@@ -801,7 +815,7 @@ final_completion() {
 
 🎯 YOUR BELL NEWS SYSTEM IS FULLY OPERATIONAL!
 
-For support: https://github.com/EmmanuelMsafiri1992/BellNews2025/issues
+For support: https://github.com/EmmanuelMsafiri1992/OnlyBell2025/issues
 EOF
 
     # Display success message
