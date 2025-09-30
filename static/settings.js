@@ -83,8 +83,8 @@ export async function handleSettingsSubmit(e) {
         networkSettings: {},
         timeSettings: {},
         API_SERVICE_URL: systemSettings.API_SERVICE_URL, // Retain existing API URL
-        // UPDATED: Add Ubuntu Device IP Address to updated settings
-        ubuntuDeviceIpAddress: document.getElementById('ubuntuDeviceIpAddress').value.trim() || ''
+        // UPDATED: Add Ubuntu Device IP Address to updated settings (if element exists)
+        ubuntuDeviceIpAddress: document.getElementById('ubuntuDeviceIpAddress')?.value?.trim() || ''
     };
 
     const selectedIpType = document.querySelector('input[name="ipType"]:checked');
