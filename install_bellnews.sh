@@ -958,12 +958,10 @@ CONFIGEOF
     chmod 666 "$INSTALL_DIR/config.json"
     log "✅ Created config.json with valid structure"
 
-    # Create users.json if it doesn't exist
-    if [[ ! -f "$INSTALL_DIR/users.json" ]]; then
-        echo '[]' > "$INSTALL_DIR/users.json"
-        chmod 666 "$INSTALL_DIR/users.json"
-        log "✅ Created users.json"
-    fi
+    # Remove old users.json to force regeneration with proper structure
+    # The application will create it with default admin/superuser accounts on first run
+    rm -f "$INSTALL_DIR/users.json"
+    log "✅ Users.json will be auto-generated on first run"
 
     # Verify critical files exist
     log "Verifying installation..."
