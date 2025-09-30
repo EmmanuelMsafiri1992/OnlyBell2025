@@ -942,12 +942,21 @@ phase7_application_installation() {
     chmod 666 "$INSTALL_DIR/alarms.json"
     log "✅ Created alarms.json"
 
-    # Create default config.json if it doesn't exist
-    if [[ ! -f "$INSTALL_DIR/config.json" ]]; then
-        echo '{}' > "$INSTALL_DIR/config.json"
-        chmod 666 "$INSTALL_DIR/config.json"
-        log "✅ Created config.json"
-    fi
+    # Create default config.json with valid empty JSON structure
+    log "Creating config.json with valid structure..."
+    cat > "$INSTALL_DIR/config.json" << 'CONFIGEOF'
+{
+  "system": {
+    "timezone": "UTC",
+    "auto_sync_time": true
+  },
+  "network": {
+    "mode": "dhcp"
+  }
+}
+CONFIGEOF
+    chmod 666 "$INSTALL_DIR/config.json"
+    log "✅ Created config.json with valid structure"
 
     # Create users.json if it doesn't exist
     if [[ ! -f "$INSTALL_DIR/users.json" ]]; then
@@ -1093,7 +1102,7 @@ Wants=network-online.target
 RequiresMountsFor=/opt/bellnews
 
 [Service]
-Type=exec
+Type=simple
 User=root
 Group=root
 WorkingDirectory=/opt/bellnews
@@ -1103,37 +1112,20 @@ Environment=FLASK_APP=vcns_timer_web.py
 Environment=FLASK_ENV=production
 
 # Startup sequence
-ExecStartPre=/bin/sleep 5
-ExecStartPre=/bin/bash -c 'cd /opt/bellnews && python3 -c "import vcns_timer_web; print(\"Pre-flight check: OK\")"'
+ExecStartPre=/bin/sleep 2
 ExecStart=/usr/bin/python3 /opt/bellnews/vcns_timer_web.py
 
 # Graceful shutdown
-ExecReload=/bin/kill -HUP $MAINPID
-ExecStop=/bin/bash -c 'pkill -TERM -f "vcns_timer_web.py"; sleep 5; pkill -KILL -f "vcns_timer_web.py" || true'
-ExecStopPost=/bin/bash -c 'pkill -f "nanopi_monitor.py" || true'
+ExecStop=/bin/kill -TERM $MAINPID
 
 # Auto-restart configuration
 Restart=always
 RestartSec=10
-StartLimitInterval=60
-StartLimitBurst=3
-
-# Resource management
-MemoryLimit=512M
-CPUQuota=80%
-IOSchedulingClass=2
-IOSchedulingPriority=4
 
 # Logging
-StandardOutput=append:/var/log/bellnews/service.log
-StandardError=append:/var/log/bellnews/error.log
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=bellnews
-
-# Security settings
-NoNewPrivileges=false
-PrivateTmp=true
-ProtectHome=false
-ProtectSystem=false
 
 [Install]
 WantedBy=multi-user.target
@@ -1237,17 +1229,31 @@ phase10_service_startup() {
 
     # Check if systemctl is available
     if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+        # Reset failed state if any
+        systemctl reset-failed bellnews 2>/dev/null || true
+
         safe_run "systemctl start bellnews" "Starting bellnews service"
 
-        # Wait for startup
+        # Wait for startup with progress checks
         log "Waiting for service initialization..."
-        sleep 15
+        local wait_count=0
+        while [[ $wait_count -lt 10 ]]; do
+            sleep 2
+            if systemctl is-active bellnews >/dev/null 2>&1; then
+                log_success "✅ Bell News service: RUNNING"
+                break
+            fi
+            wait_count=$((wait_count + 1))
+        done
 
-        # Check service status
-        if systemctl is-active bellnews >/dev/null 2>&1; then
-            log_success "✅ Bell News service: RUNNING"
-        else
-            log_warning "⚠️ Service may need additional time to start"
+        # Final status check
+        if ! systemctl is-active bellnews >/dev/null 2>&1; then
+            log_warning "⚠️ Service failed to start via systemd, checking logs..."
+            journalctl -u bellnews -n 20 --no-pager >> "$LOG_FILE"
+            log_warning "⚠️ Attempting manual start as fallback..."
+            cd /opt/bellnews
+            nohup python3 vcns_timer_web.py > /var/log/bellnews/manual_start.log 2>&1 &
+            sleep 3
         fi
     else
         log_warning "⚠️ systemctl not available, starting manually..."
