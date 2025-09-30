@@ -18,8 +18,8 @@ INSTALL_DIR="/opt/bellnews"
 LOG_FILE="/tmp/bellnews_install.log"
 TEMP_DIR="/tmp/bellnews_setup"
 
-# Redirect all output to log file while showing progress
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Initialize log file without redirecting all output
+echo "Bell News Professional Installation Started: $(date)" > "$LOG_FILE"
 
 # Professional header
 clear
@@ -50,22 +50,27 @@ print_header() {
 
 print_step() {
     echo -e "${CYAN}[$(date '+%H:%M:%S')] ${WHITE}$1...${NC}"
+    echo "[$(date '+%H:%M:%S')] STEP: $1..." >> "$LOG_FILE"
 }
 
 print_success() {
     echo -e "${GREEN}[$(date '+%H:%M:%S')] ✅ $1${NC}"
+    echo "[$(date '+%H:%M:%S')] SUCCESS: $1" >> "$LOG_FILE"
 }
 
 print_warning() {
     echo -e "${YELLOW}[$(date '+%H:%M:%S')] ⚠️  $1${NC}"
+    echo "[$(date '+%H:%M:%S')] WARNING: $1" >> "$LOG_FILE"
 }
 
 print_error() {
     echo -e "${RED}[$(date '+%H:%M:%S')] ❌ $1${NC}"
+    echo "[$(date '+%H:%M:%S')] ERROR: $1" >> "$LOG_FILE"
 }
 
 print_info() {
     echo -e "${BLUE}[$(date '+%H:%M:%S')] ℹ️  $1${NC}"
+    echo "[$(date '+%H:%M:%S')] INFO: $1" >> "$LOG_FILE"
 }
 
 # Safe execution with professional output
