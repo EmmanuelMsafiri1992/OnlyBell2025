@@ -80,11 +80,31 @@ print_success "Detected installation directory: $INSTALL_DIR"
 # Change to installation directory
 cd "$INSTALL_DIR"
 
-# Check if alarm_player.py exists
+# GitHub repository URL
+GITHUB_RAW_URL="https://raw.githubusercontent.com/EmmanuelMsafiri1992/OnlyBell2025/main"
+
+# Check and download alarm_player.py if missing
 if [ ! -f "$INSTALL_DIR/alarm_player.py" ]; then
-    print_error "alarm_player.py not found in $INSTALL_DIR"
-    print_status "Please ensure all update files are in the installation directory"
-    exit 1
+    print_warning "alarm_player.py not found, downloading from GitHub..."
+    wget -q "$GITHUB_RAW_URL/alarm_player.py" -O "$INSTALL_DIR/alarm_player.py" >> "$LOG_FILE" 2>&1
+    if [ $? -eq 0 ]; then
+        print_success "alarm_player.py downloaded"
+    else
+        print_error "Failed to download alarm_player.py from GitHub"
+        exit 1
+    fi
+fi
+
+# Check and download alarm_player.service if missing
+if [ ! -f "$INSTALL_DIR/alarm_player.service" ]; then
+    print_warning "alarm_player.service not found, downloading from GitHub..."
+    wget -q "$GITHUB_RAW_URL/alarm_player.service" -O "$INSTALL_DIR/alarm_player.service" >> "$LOG_FILE" 2>&1
+    if [ $? -eq 0 ]; then
+        print_success "alarm_player.service downloaded"
+    else
+        print_error "Failed to download alarm_player.service from GitHub"
+        exit 1
+    fi
 fi
 
 print_status "Step 1/6: Installing audio dependencies..."
