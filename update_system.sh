@@ -208,14 +208,51 @@ else
     log_warning "Pygame test failed (audio may not work)"
 fi
 
-# Step 11: Start services
+# Step 11: Configure audio and update alarm player
+log "Configuring audio and alarm player..."
+
+# Configure ALSA audio to use H3 Codec (card 2)
+if [ ! -f /etc/asound.conf ]; then
+    log "Setting up audio routing..."
+    cat > /etc/asound.conf << 'ALSA_EOF'
+pcm.!default {
+    type hw
+    card 2
+}
+
+ctl.!default {
+    type hw
+    card 2
+}
+ALSA_EOF
+    log "Audio routing configured"
+fi
+
+# Set audio volume
+amixer set 'Line Out' 100% > /dev/null 2>&1 || true
+amixer set 'DAC' 100% > /dev/null 2>&1 || true
+alsactl store 2>/dev/null || true
+
+# Install ffmpeg for MP3 conversion if missing
+if ! command -v ffmpeg &> /dev/null; then
+    log "Installing ffmpeg for audio conversion..."
+    apt-get install -y ffmpeg -qq 2>/dev/null || log_warning "ffmpeg installation failed"
+fi
+
+# Run alarm player update if script exists
+if [ -f "/opt/bellnews/update_alarm_player.sh" ]; then
+    log "Running alarm player update..."
+    bash /opt/bellnews/update_alarm_player.sh >> /tmp/alarm_update.log 2>&1 || log_warning "Alarm player update had warnings"
+fi
+
+# Step 12: Start services
 log "Starting Bell News services..."
 sudo systemctl start bellnews
 
 # Wait for services to start
 sleep 10
 
-# Step 12: Verify everything is working
+# Step 13: Verify everything is working
 log "Verifying system status..."
 
 if sudo systemctl is-active bellnews >/dev/null 2>&1; then
