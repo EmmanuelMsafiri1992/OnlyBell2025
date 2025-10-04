@@ -113,18 +113,20 @@ class AlarmPlayer:
 
             # Check if current time matches alarm time (within same minute)
             if now.hour == alarm_hour and now.minute == alarm_minute:
-                # Check if we already triggered this alarm today
+                # Check if we already triggered this alarm at this specific time today
+                # Use alarm_id + time to allow edited alarms to trigger again
                 alarm_id = alarm.get('id', alarm_time)
+                alarm_key = f"{alarm_id}_{alarm_time}"  # Unique key per alarm time
                 today_date = now.strftime("%Y-%m-%d")
 
                 with self.lock:
-                    last_triggered = self.triggered_alarms.get(alarm_id)
+                    last_triggered = self.triggered_alarms.get(alarm_key)
                     if last_triggered == today_date:
-                        # Already triggered today
+                        # Already triggered at this time today
                         return False
 
-                    # Mark as triggered for today
-                    self.triggered_alarms[alarm_id] = today_date
+                    # Mark as triggered for today at this time
+                    self.triggered_alarms[alarm_key] = today_date
                     return True
 
             return False
