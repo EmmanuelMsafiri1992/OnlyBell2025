@@ -80,15 +80,33 @@ class AlarmPlayer:
 
         try:
             with open(ALARMS_FILE, 'r') as f:
-                data = json.load(f)
+                content = f.read().strip()
+                if not content:
+                    logger.warning(f"Alarms file is empty")
+                    return []
+
+                data = json.loads(content)
                 if isinstance(data, list):
                     logger.info(f"Loaded {len(data)} alarms from file")
                     return data
                 else:
-                    logger.warning(f"Invalid alarms data format, expected list")
+                    logger.warning(f"Invalid alarms data format, expected list, got {type(data)}")
                     return []
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode alarms JSON: {e}")
+            logger.error(f"Failed to decode alarms JSON: {e}. File may be corrupted.")
+            # Try to backup the corrupted file
+            try:
+                backup_file = ALARMS_FILE.parent / f"alarms.json.corrupted.{int(time.time())}"
+                ALARMS_FILE.rename(backup_file)
+                logger.info(f"Backed up corrupted file to: {backup_file}")
+                # Create empty alarms file
+                with open(ALARMS_FILE, 'w') as f:
+                    json.dump([], f)
+            except Exception as backup_err:
+                logger.error(f"Failed to backup corrupted file: {backup_err}")
+            return []
+        except PermissionError:
+            logger.error(f"Permission denied reading {ALARMS_FILE}")
             return []
         except Exception as e:
             logger.error(f"Error loading alarms: {e}")
@@ -173,6 +191,15 @@ class AlarmPlayer:
                 if sound_file.lower().endswith(('.mp3', '.ogg')):
                     logger.info(f"Converting {sound_file} to WAV for playback")
                     wav_path = sound_path.parent / f"{sound_path.stem}_temp.wav"
+
+                    # Clean up any existing temp files first
+                    try:
+                        for old_temp in sound_path.parent.glob("*_temp.wav"):
+                            if old_temp.exists():
+                                old_temp.unlink()
+                    except Exception as cleanup_err:
+                        logger.warning(f"Couldn't cleanup old temp files: {cleanup_err}")
+
                     try:
                         result = subprocess.run(
                             ['ffmpeg', '-i', str(sound_path), '-y', str(wav_path)],
@@ -202,8 +229,20 @@ class AlarmPlayer:
                         timeout=30
                     )
                     if result.returncode != 0:
-                        logger.error(f"aplay failed: {result.stderr.decode()}")
+                        stderr_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'unknown error'
+                        logger.error(f"aplay failed: {stderr_msg}")
                         return False
+                except subprocess.TimeoutExpired:
+                    logger.error(f"aplay timeout - sound file too long or system hung")
+                    # Kill any stuck aplay processes
+                    try:
+                        subprocess.run(['pkill', '-9', 'aplay'], timeout=5)
+                    except:
+                        pass
+                    return False
+                except FileNotFoundError:
+                    logger.error(f"aplay command not found - audio system not installed")
+                    return False
                 except Exception as e:
                     logger.error(f"aplay error: {e}")
                     return False
@@ -212,8 +251,8 @@ class AlarmPlayer:
                     if temp_file and temp_file.exists():
                         try:
                             temp_file.unlink()
-                        except:
-                            pass
+                        except Exception as cleanup_err:
+                            logger.warning(f"Failed to cleanup temp file: {cleanup_err}")
 
                 logger.info(f"Finished playing: {sound_file}")
                 return True
