@@ -109,7 +109,7 @@ fi
 
 print_status "Step 1/6: Installing audio dependencies..."
 apt-get update >> "$LOG_FILE" 2>&1
-apt-get install -y python3-dev libasound2-dev python3-pygame >> "$LOG_FILE" 2>&1
+apt-get install -y python3-dev libasound2-dev >> "$LOG_FILE" 2>&1
 print_success "Audio dependencies installed"
 
 print_status "Step 2/6: Installing Python audio libraries..."
