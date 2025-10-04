@@ -167,7 +167,7 @@ class AlarmPlayer:
                 # If file is MP3, convert to WAV using ffmpeg
                 if sound_file.lower().endswith(('.mp3', '.ogg')):
                     logger.info(f"Converting {sound_file} to WAV for playback")
-                    wav_path = sound_path.parent / f"{sound_path.stem}.wav.tmp"
+                    wav_path = sound_path.parent / f"{sound_path.stem}_temp.wav"
                     import subprocess
                     try:
                         result = subprocess.run(
