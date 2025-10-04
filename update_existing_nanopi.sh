@@ -127,8 +127,17 @@ else
     print_success "ffmpeg already installed"
 fi
 
-# Step 7: Restart alarm player service
-print_status "Step 7/7: Restarting alarm player service..."
+# Step 7: Fix time synchronization
+print_status "Step 7/8: Configuring time synchronization..."
+timedatectl set-timezone Asia/Jerusalem 2>/dev/null || true
+apt-get install -y ntp ntpdate -qq > /dev/null 2>&1 || true
+systemctl enable ntp > /dev/null 2>&1 || true
+systemctl start ntp > /dev/null 2>&1 || true
+timedatectl set-ntp true > /dev/null 2>&1 || true
+print_success "Time sync configured (Asia/Jerusalem)"
+
+# Step 8: Restart alarm player service
+print_status "Step 8/8: Restarting alarm player service..."
 systemctl restart alarm_player
 sleep 2
 

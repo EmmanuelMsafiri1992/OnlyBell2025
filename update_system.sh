@@ -245,14 +245,23 @@ if [ -f "/opt/bellnews/update_alarm_player.sh" ]; then
     bash /opt/bellnews/update_alarm_player.sh >> /tmp/alarm_update.log 2>&1 || log_warning "Alarm player update had warnings"
 fi
 
-# Step 12: Start services
+# Step 12: Fix time synchronization
+log "Configuring time synchronization..."
+timedatectl set-timezone Asia/Jerusalem 2>/dev/null || true
+apt-get install -y ntp ntpdate -qq > /dev/null 2>&1 || log_warning "NTP installation had issues"
+systemctl enable ntp > /dev/null 2>&1 || true
+systemctl start ntp > /dev/null 2>&1 || true
+timedatectl set-ntp true > /dev/null 2>&1 || true
+log "Time sync configured (Asia/Jerusalem timezone)"
+
+# Step 13: Start services
 log "Starting Bell News services..."
 sudo systemctl start bellnews
 
 # Wait for services to start
 sleep 10
 
-# Step 13: Verify everything is working
+# Step 14: Verify everything is working
 log "Verifying system status..."
 
 if sudo systemctl is-active bellnews >/dev/null 2>&1; then
