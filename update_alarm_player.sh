@@ -109,8 +109,8 @@ fi
 
 print_status "Step 1/6: Installing audio dependencies..."
 apt-get update >> "$LOG_FILE" 2>&1
-apt-get install -y python3-dev libasound2-dev >> "$LOG_FILE" 2>&1
-print_success "Audio dependencies installed"
+apt-get install -y python3-dev libasound2-dev ffmpeg >> "$LOG_FILE" 2>&1
+print_success "Audio dependencies installed (including ffmpeg for MP3 conversion)"
 
 print_status "Step 2/6: Installing Python audio libraries..."
 # Try pygame first (supports MP3, WAV, OGG, etc.)

@@ -20,9 +20,14 @@ import pytz
 try:
     import pygame
     pygame.mixer.init()
-    AUDIO_AVAILABLE = True
-    AUDIO_ENGINE = "pygame"
-except ImportError:
+    # Check if pygame.mixer.music is available
+    if hasattr(pygame.mixer, 'music'):
+        AUDIO_AVAILABLE = True
+        AUDIO_ENGINE = "pygame"
+    else:
+        # Custom pygame without music support, fallback to simpleaudio
+        raise AttributeError("pygame.mixer.music not available")
+except (ImportError, AttributeError, Exception):
     # Fallback to simpleaudio (WAV only)
     try:
         import simpleaudio as sa
@@ -159,6 +164,21 @@ class AlarmPlayer:
 
             elif AUDIO_ENGINE == "simpleaudio":
                 # Use simpleaudio (WAV only)
+                # If file is MP3, convert to WAV using ffmpeg
+                if sound_file.lower().endswith('.mp3'):
+                    logger.info(f"Converting MP3 to WAV for playback: {sound_file}")
+                    wav_path = sound_path.with_suffix('.wav.tmp')
+                    import subprocess
+                    result = subprocess.run(
+                        ['ffmpeg', '-i', str(sound_path), '-y', str(wav_path)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    if result.returncode != 0:
+                        logger.error(f"Failed to convert MP3 to WAV: {sound_file}")
+                        return False
+                    sound_path = wav_path
+
                 # Stop any currently playing sound
                 if play_object and play_object.is_playing():
                     play_object.stop()
@@ -169,6 +189,10 @@ class AlarmPlayer:
 
                 # Wait for sound to finish
                 play_object.wait_done()
+
+                # Clean up temp file
+                if sound_file.lower().endswith('.mp3'):
+                    sound_path.unlink(missing_ok=True)
 
                 logger.info(f"Finished playing: {sound_file}")
                 return True
