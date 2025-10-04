@@ -165,19 +165,27 @@ class AlarmPlayer:
             elif AUDIO_ENGINE == "simpleaudio":
                 # Use simpleaudio (WAV only)
                 # If file is MP3, convert to WAV using ffmpeg
-                if sound_file.lower().endswith('.mp3'):
-                    logger.info(f"Converting MP3 to WAV for playback: {sound_file}")
-                    wav_path = sound_path.with_suffix('.wav.tmp')
+                if sound_file.lower().endswith(('.mp3', '.ogg')):
+                    logger.info(f"Converting {sound_file} to WAV for playback")
+                    wav_path = sound_path.parent / f"{sound_path.stem}.wav.tmp"
                     import subprocess
-                    result = subprocess.run(
-                        ['ffmpeg', '-i', str(sound_path), '-y', str(wav_path)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-                    if result.returncode != 0:
-                        logger.error(f"Failed to convert MP3 to WAV: {sound_file}")
+                    try:
+                        result = subprocess.run(
+                            ['ffmpeg', '-i', str(sound_path), '-y', str(wav_path)],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=10
+                        )
+                        if result.returncode != 0:
+                            logger.error(f"FFmpeg failed: {result.stderr.decode()}")
+                            return False
+                        sound_path = wav_path
+                    except subprocess.TimeoutExpired:
+                        logger.error(f"FFmpeg conversion timeout for: {sound_file}")
                         return False
-                    sound_path = wav_path
+                    except Exception as e:
+                        logger.error(f"FFmpeg conversion error: {e}")
+                        return False
 
                 # Stop any currently playing sound
                 if play_object and play_object.is_playing():
@@ -191,8 +199,11 @@ class AlarmPlayer:
                 play_object.wait_done()
 
                 # Clean up temp file
-                if sound_file.lower().endswith('.mp3'):
-                    sound_path.unlink(missing_ok=True)
+                if sound_file.lower().endswith(('.mp3', '.ogg')):
+                    try:
+                        sound_path.unlink()
+                    except:
+                        pass
 
                 logger.info(f"Finished playing: {sound_file}")
                 return True
