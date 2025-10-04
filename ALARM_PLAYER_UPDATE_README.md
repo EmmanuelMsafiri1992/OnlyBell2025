@@ -7,9 +7,10 @@ This update adds the **missing alarm sound playback component** to your BellNews
 ## What This Update Does
 
 - ✅ Installs the `alarm_player.py` service that monitors alarms and plays sounds
-- ✅ Installs required audio dependencies (`simpleaudio` library)
+- ✅ Installs required audio dependencies (`pygame` library for MP3/WAV/OGG support)
 - ✅ Configures systemd service for automatic startup
 - ✅ Enables sound playback through Nano Pi hardware
+- ✅ Supports multiple audio formats: **MP3, WAV, OGG**
 
 ## Prerequisites
 
@@ -179,9 +180,10 @@ pip3 install simpleaudio
 
 ## Audio File Requirements
 
-- **Format:** WAV files (MP3/OGG also supported but WAV recommended)
-- **Location:** `/root/bellapp/static/audio/`
+- **Formats:** MP3, WAV, OGG (all fully supported via pygame)
+- **Location:** `/root/bellapp/static/audio/` or `/opt/bellnews/static/audio/`
 - **Upload:** Use the web interface to upload sound files
+- **Recommended:** MP3 for smaller file sizes, WAV for best compatibility
 
 ## Uninstalling (If Needed)
 

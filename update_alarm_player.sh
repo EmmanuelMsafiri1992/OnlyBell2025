@@ -109,15 +109,22 @@ fi
 
 print_status "Step 1/6: Installing audio dependencies..."
 apt-get update >> "$LOG_FILE" 2>&1
-apt-get install -y python3-dev libasound2-dev >> "$LOG_FILE" 2>&1
+apt-get install -y python3-dev libasound2-dev python3-pygame >> "$LOG_FILE" 2>&1
 print_success "Audio dependencies installed"
 
-print_status "Step 2/6: Installing simpleaudio Python library..."
-pip3 install simpleaudio >> "$LOG_FILE" 2>&1 || {
-    print_warning "pip3 install failed, trying with --break-system-packages"
-    pip3 install --break-system-packages simpleaudio >> "$LOG_FILE" 2>&1
-}
-print_success "simpleaudio library installed"
+print_status "Step 2/6: Installing Python audio libraries..."
+# Try pygame first (supports MP3, WAV, OGG, etc.)
+if pip3 install pygame >> "$LOG_FILE" 2>&1; then
+    print_success "pygame library installed (supports MP3, WAV, OGG)"
+elif pip3 install --break-system-packages pygame >> "$LOG_FILE" 2>&1; then
+    print_success "pygame library installed with --break-system-packages"
+else
+    print_warning "pygame installation failed, trying simpleaudio (WAV only)"
+    pip3 install simpleaudio >> "$LOG_FILE" 2>&1 || {
+        pip3 install --break-system-packages simpleaudio >> "$LOG_FILE" 2>&1
+    }
+    print_success "simpleaudio library installed (WAV only)"
+fi
 
 print_status "Step 3/6: Setting up alarm player service file..."
 # Copy service file to systemd directory
@@ -167,6 +174,7 @@ echo -e "${GREEN}║   UPDATE COMPLETE!                                         
 echo -e "${GREEN}║                                                               ║${NC}"
 echo -e "${GREEN}║   The alarm player service is now installed and running      ║${NC}"
 echo -e "${GREEN}║   Bell sounds will play through the Nano Pi speakers         ║${NC}"
+echo -e "${GREEN}║   Supports: MP3, WAV, OGG, and other audio formats           ║${NC}"
 echo -e "${GREEN}║                                                               ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -180,4 +188,5 @@ print_status "Log file: $LOG_FILE"
 print_status "Service log: $INSTALL_DIR/logs/alarm_player.log"
 echo ""
 print_success "You can now test alarms from the web interface!"
+print_success "Supported audio formats: MP3, WAV, OGG"
 echo ""

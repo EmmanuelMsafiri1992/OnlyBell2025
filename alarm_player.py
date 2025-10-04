@@ -2,6 +2,7 @@
 """
 Alarm Player Service for BellNews System
 Monitors alarms.json and plays sounds at scheduled times through system speakers
+Supports: MP3, WAV, OGG, and other audio formats
 """
 
 import os
@@ -15,14 +16,23 @@ from pathlib import Path
 from datetime import datetime
 import pytz
 
-# Try to import simpleaudio, handle gracefully if not available
+# Try to import pygame for audio playback (supports MP3, WAV, OGG, etc.)
 try:
-    import simpleaudio as sa
+    import pygame
+    pygame.mixer.init()
     AUDIO_AVAILABLE = True
+    AUDIO_ENGINE = "pygame"
 except ImportError:
-    AUDIO_AVAILABLE = False
-    print("WARNING: simpleaudio not installed. Audio playback will not work.")
-    print("Install with: pip3 install simpleaudio")
+    # Fallback to simpleaudio (WAV only)
+    try:
+        import simpleaudio as sa
+        AUDIO_AVAILABLE = True
+        AUDIO_ENGINE = "simpleaudio"
+    except ImportError:
+        AUDIO_AVAILABLE = False
+        AUDIO_ENGINE = "none"
+        print("WARNING: No audio library installed. Audio playback will not work.")
+        print("Install with: pip3 install pygame (recommended) or pip3 install simpleaudio")
 
 # Configure paths
 BASE_DIR = Path(__file__).resolve().parent
@@ -123,7 +133,7 @@ class AlarmPlayer:
         global play_object
 
         if not AUDIO_AVAILABLE:
-            logger.error("Cannot play sound - simpleaudio not available")
+            logger.error(f"Cannot play sound - no audio library available (engine: {AUDIO_ENGINE})")
             return False
 
         sound_path = AUDIO_DIR / sound_file
@@ -133,21 +143,39 @@ class AlarmPlayer:
             return False
 
         try:
-            logger.info(f"Playing sound: {sound_file}")
+            logger.info(f"Playing sound: {sound_file} (engine: {AUDIO_ENGINE})")
 
-            # Stop any currently playing sound
-            if play_object and play_object.is_playing():
-                play_object.stop()
+            if AUDIO_ENGINE == "pygame":
+                # Use pygame mixer (supports MP3, WAV, OGG)
+                pygame.mixer.music.load(str(sound_path))
+                pygame.mixer.music.play()
 
-            # Load and play the sound
-            wave_obj = sa.WaveObject.from_wave_file(str(sound_path))
-            play_object = wave_obj.play()
+                # Wait for sound to finish
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
 
-            # Wait for sound to finish
-            play_object.wait_done()
+                logger.info(f"Finished playing: {sound_file}")
+                return True
 
-            logger.info(f"Finished playing: {sound_file}")
-            return True
+            elif AUDIO_ENGINE == "simpleaudio":
+                # Use simpleaudio (WAV only)
+                # Stop any currently playing sound
+                if play_object and play_object.is_playing():
+                    play_object.stop()
+
+                # Load and play the sound
+                wave_obj = sa.WaveObject.from_wave_file(str(sound_path))
+                play_object = wave_obj.play()
+
+                # Wait for sound to finish
+                play_object.wait_done()
+
+                logger.info(f"Finished playing: {sound_file}")
+                return True
+
+            else:
+                logger.error("No audio engine available")
+                return False
 
         except Exception as e:
             logger.error(f"Error playing sound {sound_file}: {e}")
@@ -218,13 +246,14 @@ class AlarmPlayer:
         logger.info("=" * 60)
         logger.info("BellNews Alarm Player Service Starting")
         logger.info(f"Audio Available: {AUDIO_AVAILABLE}")
+        logger.info(f"Audio Engine: {AUDIO_ENGINE}")
         logger.info(f"Alarms File: {ALARMS_FILE}")
         logger.info(f"Audio Directory: {AUDIO_DIR}")
         logger.info("=" * 60)
 
         if not AUDIO_AVAILABLE:
-            logger.error("CRITICAL: simpleaudio not installed. Service will not play sounds.")
-            logger.error("Please run: pip3 install simpleaudio")
+            logger.error("CRITICAL: No audio library installed. Service will not play sounds.")
+            logger.error("Please run: pip3 install pygame (recommended) or pip3 install simpleaudio")
 
         # Initial load
         self.alarms = self.load_alarms()
