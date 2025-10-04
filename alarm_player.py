@@ -163,12 +163,14 @@ class AlarmPlayer:
                 return True
 
             elif AUDIO_ENGINE == "simpleaudio":
-                # Use simpleaudio (WAV only)
-                # If file is MP3, convert to WAV using ffmpeg
+                # Use aplay directly (most stable for ARM devices)
+                import subprocess
+
+                # If file is MP3/OGG, convert to WAV using ffmpeg
+                temp_file = None
                 if sound_file.lower().endswith(('.mp3', '.ogg')):
                     logger.info(f"Converting {sound_file} to WAV for playback")
                     wav_path = sound_path.parent / f"{sound_path.stem}_temp.wav"
-                    import subprocess
                     try:
                         result = subprocess.run(
                             ['ffmpeg', '-i', str(sound_path), '-y', str(wav_path)],
@@ -180,6 +182,7 @@ class AlarmPlayer:
                             logger.error(f"FFmpeg failed: {result.stderr.decode()}")
                             return False
                         sound_path = wav_path
+                        temp_file = wav_path
                     except subprocess.TimeoutExpired:
                         logger.error(f"FFmpeg conversion timeout for: {sound_file}")
                         return False
@@ -187,23 +190,28 @@ class AlarmPlayer:
                         logger.error(f"FFmpeg conversion error: {e}")
                         return False
 
-                # Stop any currently playing sound
-                if play_object and play_object.is_playing():
-                    play_object.stop()
-
-                # Load and play the sound
-                wave_obj = sa.WaveObject.from_wave_file(str(sound_path))
-                play_object = wave_obj.play()
-
-                # Wait for sound to finish
-                play_object.wait_done()
-
-                # Clean up temp file
-                if sound_file.lower().endswith(('.mp3', '.ogg')):
-                    try:
-                        sound_path.unlink()
-                    except:
-                        pass
+                # Play using aplay (system audio player)
+                try:
+                    logger.info(f"Playing WAV file with aplay: {sound_path.name}")
+                    result = subprocess.run(
+                        ['aplay', str(sound_path)],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=30
+                    )
+                    if result.returncode != 0:
+                        logger.error(f"aplay failed: {result.stderr.decode()}")
+                        return False
+                except Exception as e:
+                    logger.error(f"aplay error: {e}")
+                    return False
+                finally:
+                    # Clean up temp file
+                    if temp_file and temp_file.exists():
+                        try:
+                            temp_file.unlink()
+                        except:
+                            pass
 
                 logger.info(f"Finished playing: {sound_file}")
                 return True
