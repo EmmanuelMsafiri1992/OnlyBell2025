@@ -130,7 +130,8 @@ echo ""
 
 # Step 6.5: Create time sync on boot service
 print_step 6.5 $TOTAL_STEPS "Creating time sync on boot service..."
-cat > /etc/systemd/system/timesync-on-boot.service << 'EOFSERVICE'
+# Use tee to avoid leading spaces issue with heredoc
+tee /etc/systemd/system/timesync-on-boot.service > /dev/null << 'EOFSERVICE'
 [Unit]
 Description=Force NTP Time Sync on Boot
 After=network-online.target
@@ -138,8 +139,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStartPre=/bin/sleep 5
-ExecStart=/usr/sbin/ntpdate -s pool.ntp.org
+ExecStartPre=/bin/sleep 10
+ExecStart=/bin/bash -c "ntpdate -s -u 216.239.35.0 || ntpdate -s -u 129.6.15.28 || ntpdate -s -u 132.163.96.1"
 ExecStartPost=/bin/systemctl restart ntp
 RemainAfterExit=yes
 
@@ -150,7 +151,7 @@ EOFSERVICE
 systemctl daemon-reload >> "$LOG_FILE" 2>&1
 systemctl enable timesync-on-boot.service >> "$LOG_FILE" 2>&1
 print_success "Time sync on boot service created"
-print_info "Time will automatically sync after every reboot"
+print_info "Time will automatically sync after every reboot (uses IP-based NTP servers)"
 echo ""
 
 # Step 7: Update code to latest version
