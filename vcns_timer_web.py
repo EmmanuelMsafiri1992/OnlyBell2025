@@ -978,6 +978,18 @@ def api_get_metrics():
     metrics = get_metrics_internal()
     return jsonify(metrics)
 
+@app.route("/api/server_time", methods=["GET"])
+@login_required # Protect this endpoint
+@handle_exceptions()
+def api_get_server_time():
+    """Endpoint to get server's current time in ISO format."""
+    server_time = datetime.now(pytz.timezone('Asia/Jerusalem'))
+    return jsonify({
+        "time": server_time.isoformat(),
+        "timezone": "Asia/Jerusalem",
+        "timestamp": server_time.timestamp()
+    })
+
 @app.route("/api/sounds", methods=["GET"])
 @login_required # Protect this endpoint
 @handle_exceptions()

@@ -3,14 +3,28 @@ import { showFlashMessage } from './ui.js';
 
 /**
  * Updates the displayed current time and timezone on the dashboard.
+ * Fetches server time to ensure accuracy with alarm triggering.
  */
-export function updateCurrentTime() {
+export async function updateCurrentTime() {
     const currentTimeElement = document.getElementById("currentTime");
     const timezoneElement = document.getElementById("timezone");
     if (currentTimeElement && timezoneElement) {
-        const now = new Date();
-        currentTimeElement.textContent = now.toLocaleTimeString();
-        timezoneElement.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        try {
+            // Fetch server time from the backend
+            const response = await fetch('/api/server_time');
+            const serverTime = await response.json();
+
+            // Parse the server time and display it
+            const serverDate = new Date(serverTime.time);
+            currentTimeElement.textContent = serverDate.toLocaleTimeString();
+            timezoneElement.textContent = serverTime.timezone;
+        } catch (error) {
+            // Fallback to browser time if server time fetch fails
+            console.warn("Failed to fetch server time, using browser time:", error);
+            const now = new Date();
+            currentTimeElement.textContent = now.toLocaleTimeString();
+            timezoneElement.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        }
     }
 }
 
