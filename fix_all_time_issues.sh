@@ -84,7 +84,7 @@ fi
 print_success "Detected installation directory: $INSTALL_DIR"
 echo ""
 
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 
 # Step 1: Show current time before fix
 print_step 1 $TOTAL_STEPS "Checking current system time..."
@@ -126,6 +126,31 @@ print_step 6 $TOTAL_STEPS "Enabling automatic time synchronization..."
 systemctl start ntp >> "$LOG_FILE" 2>&1
 systemctl enable ntp >> "$LOG_FILE" 2>&1
 print_success "Automatic time sync enabled"
+echo ""
+
+# Step 6.5: Create time sync on boot service
+print_step 6.5 $TOTAL_STEPS "Creating time sync on boot service..."
+cat > /etc/systemd/system/timesync-on-boot.service << 'EOFSERVICE'
+[Unit]
+Description=Force NTP Time Sync on Boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/sbin/ntpdate -s pool.ntp.org
+ExecStartPost=/bin/systemctl restart ntp
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOFSERVICE
+
+systemctl daemon-reload >> "$LOG_FILE" 2>&1
+systemctl enable timesync-on-boot.service >> "$LOG_FILE" 2>&1
+print_success "Time sync on boot service created"
+print_info "Time will automatically sync after every reboot"
 echo ""
 
 # Step 7: Update code to latest version
@@ -194,6 +219,7 @@ echo -e "${GREEN}✓${NC} Timezone:           $TIMEZONE"
 echo -e "${GREEN}✓${NC} NTP Synchronized:   $NTP_STATUS"
 echo -e "${GREEN}✓${NC} Code Version:       Latest (with server time display)"
 echo -e "${GREEN}✓${NC} Services:           Restarted and running"
+echo -e "${GREEN}✓${NC} Boot Time Sync:     Enabled (syncs after every reboot)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -201,7 +227,8 @@ echo -e "${YELLOW}Important:${NC}"
 echo "  1. Clear your browser cache (Ctrl+F5 or Ctrl+Shift+R)"
 echo "  2. Refresh the web interface"
 echo "  3. The web page will now show Nano Pi's exact time"
-echo "  4. Time will automatically stay synchronized via NTP"
+echo "  4. Time will automatically sync on EVERY reboot"
+echo "  5. Time will stay synchronized via NTP continuously"
 echo ""
 
 echo -e "${CYAN}Verification:${NC}"
