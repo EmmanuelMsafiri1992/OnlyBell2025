@@ -23,10 +23,27 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Define paths
-APP_DIR="/root/bellapp"
-BACKUP_DIR="/root/bellapp_backups"
+# Define paths - detect where the app is installed
+if [ -d "/opt/bellnews" ]; then
+    APP_DIR="/opt/bellnews"
+elif [ -d "/root/bellapp" ]; then
+    APP_DIR="/root/bellapp"
+else
+    # Try to detect from current directory
+    if [ -f "./alarm_player.py" ]; then
+        APP_DIR="$(pwd)"
+    else
+        echo -e "${RED}Error: Cannot find application directory${NC}"
+        echo "Looked in: /opt/bellnews, /root/bellapp"
+        exit 1
+    fi
+fi
+
+BACKUP_DIR="${APP_DIR}_backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+echo "Using app directory: $APP_DIR"
+echo ""
 
 echo -e "${YELLOW}Step 1: Creating backup...${NC}"
 mkdir -p "$BACKUP_DIR"
