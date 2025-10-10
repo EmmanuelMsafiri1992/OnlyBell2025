@@ -12,6 +12,7 @@ import time
 import logging
 import threading
 import signal
+import gc
 from pathlib import Path
 from datetime import datetime
 import pytz
@@ -70,6 +71,8 @@ class AlarmPlayer:
         self.alarms = []
         self.triggered_alarms = {}  # Track which alarms were triggered {alarm_id: last_triggered_date}
         self.lock = threading.Lock()
+        self.last_file_mtime = 0  # Track last modification time of alarms file
+        self.check_count = 0  # Counter for periodic cleanup
         logger.info("Alarm Player initialized")
 
     def load_alarms(self):
@@ -179,6 +182,8 @@ class AlarmPlayer:
                 while pygame.mixer.music.get_busy():
                     time.sleep(0.1)
 
+                # Unload the music to free resources
+                pygame.mixer.music.unload()
                 logger.info(f"Finished playing: {sound_file}")
                 return True
 
@@ -284,6 +289,21 @@ class AlarmPlayer:
             daemon=True
         ).start()
 
+    def should_reload_alarms(self):
+        """Check if alarms file has been modified since last load"""
+        if not ALARMS_FILE.exists():
+            return False
+
+        try:
+            current_mtime = os.path.getmtime(ALARMS_FILE)
+            if current_mtime > self.last_file_mtime:
+                self.last_file_mtime = current_mtime
+                return True
+        except OSError as e:
+            logger.error(f"Error checking alarm file modification time: {e}")
+
+        return False
+
     def monitor_alarms(self):
         """Main monitoring loop"""
         logger.info("Starting alarm monitoring...")
@@ -300,21 +320,34 @@ class AlarmPlayer:
                 if current_minute != last_minute:
                     last_minute = current_minute
 
-                    # Reload alarms (in case they were updated)
-                    self.alarms = self.load_alarms()
+                    # Increment check counter
+                    self.check_count += 1
+
+                    # Only reload alarms if file has been modified (not every minute!)
+                    if self.should_reload_alarms():
+                        self.alarms = self.load_alarms()
+                        logger.info("Alarms reloaded due to file modification")
 
                     # Check each alarm
                     for alarm in self.alarms:
                         if self.check_alarm_time(alarm, now):
                             self.trigger_alarm(alarm)
 
-                # Clean up old triggered alarms (keep only today's)
-                today_date = now.strftime("%Y-%m-%d")
-                with self.lock:
-                    self.triggered_alarms = {
-                        k: v for k, v in self.triggered_alarms.items()
-                        if v == today_date
-                    }
+                    # Clean up old triggered alarms (keep only today's)
+                    today_date = now.strftime("%Y-%m-%d")
+                    with self.lock:
+                        old_count = len(self.triggered_alarms)
+                        self.triggered_alarms = {
+                            k: v for k, v in self.triggered_alarms.items()
+                            if v == today_date
+                        }
+                        if old_count > len(self.triggered_alarms):
+                            logger.debug(f"Cleaned up {old_count - len(self.triggered_alarms)} old triggered alarms")
+
+                    # Periodic memory cleanup every 60 checks (~1 hour)
+                    if self.check_count % 60 == 0:
+                        gc.collect()
+                        logger.debug(f"Performed garbage collection. Check count: {self.check_count}")
 
                 # Sleep for 5 seconds before next check
                 time.sleep(5)
