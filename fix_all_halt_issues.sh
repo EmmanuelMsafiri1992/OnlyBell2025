@@ -7,7 +7,7 @@
 # 1. Journal disk space full (2.9GB → 100MB limit)
 # 2. Memory leaks (already fixed in code, verify services)
 # 3. Time sync failures (install boot-time sync service)
-# 4. Network connectivity (verify and fix)
+# 4. Network auto-start (DHCP starts automatically on boot)
 # 5. Service failures (restart and enable all services)
 #
 # Usage: curl -sSL https://raw.githubusercontent.com/EmmanuelMsafiri1992/OnlyBell2025/main/fix_all_halt_issues.sh | sudo bash
@@ -92,7 +92,7 @@ fi
 print_success "Detected installation directory: $INSTALL_DIR"
 echo ""
 
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 
 ################################################################################
 # STEP 1: FIX JOURNAL DISK SPACE (CRITICAL - Causes Halt!)
@@ -389,9 +389,83 @@ fi
 echo ""
 
 ################################################################################
-# STEP 10: FINAL VERIFICATION
+# STEP 10: FIX NETWORK AUTO-START (Critical - Prevents internet on reboot)
 ################################################################################
-print_step 10 $TOTAL_STEPS "Final system verification..."
+print_step 10 $TOTAL_STEPS "Configuring network auto-start on boot..."
+echo ""
+
+print_info "Installing network-ensure service..."
+
+# Detect primary network interface
+INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+if [ -z "$INTERFACE" ]; then
+    INTERFACE="eth0"
+    print_info "Using default interface: eth0"
+else
+    print_success "Detected interface: $INTERFACE"
+fi
+
+# Create network-ensure service
+cat > /etc/systemd/system/network-ensure.service <<'NETWORKENSURE'
+[Unit]
+Description=Ensure Network Interface Gets IP on Boot
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 5
+ExecStart=/bin/bash -c '\
+    INTERFACE=$(ip route | grep default | awk "{print \$5}" | head -1); \
+    if [ -z "$INTERFACE" ]; then INTERFACE="eth0"; fi; \
+    if ! ip addr show $INTERFACE | grep -q "inet "; then \
+        echo "Network interface $INTERFACE has no IP, requesting DHCP..."; \
+        dhclient -r $INTERFACE 2>/dev/null || true; \
+        dhclient $INTERFACE; \
+        sleep 3; \
+        if ip addr show $INTERFACE | grep -q "inet "; then \
+            echo "Network interface $INTERFACE obtained IP successfully"; \
+        else \
+            echo "Warning: Could not obtain IP for $INTERFACE"; \
+        fi; \
+    else \
+        echo "Network interface $INTERFACE already has IP address"; \
+    fi'
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+NETWORKENSURE
+
+systemctl daemon-reload >> "$LOG_FILE" 2>&1
+systemctl enable network-ensure.service >> "$LOG_FILE" 2>&1
+print_success "Network-ensure service installed and enabled"
+print_info "Network will automatically start on every boot"
+print_info "No more manual 'sudo dhclient eth0' needed!"
+
+# Create helper script
+cat > /usr/local/bin/fix-network <<'FIXNETWORK'
+#!/bin/bash
+INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+if [ -z "$INTERFACE" ]; then INTERFACE="eth0"; fi
+echo "Restarting network on $INTERFACE..."
+dhclient -r "$INTERFACE" 2>/dev/null || true
+dhclient "$INTERFACE"
+sleep 2
+IP=$(ip addr show "$INTERFACE" | grep "inet " | awk '{print $2}' | cut -d'/' -f1)
+if [ -n "$IP" ]; then echo "✓ Network is up - IP: $IP"; else echo "✗ Failed to get IP"; fi
+FIXNETWORK
+
+chmod +x /usr/local/bin/fix-network >> "$LOG_FILE" 2>&1
+print_success "Created 'fix-network' helper command"
+echo ""
+
+################################################################################
+# STEP 11: FINAL VERIFICATION
+################################################################################
+print_step 11 $TOTAL_STEPS "Final system verification..."
 echo ""
 
 print_info "Checking critical components..."
@@ -447,6 +521,7 @@ echo -e "${GREEN}✓${NC} Journal Disk Space:  Limited to 100MB (was 2.9GB)"
 echo -e "${GREEN}✓${NC} Journal Retention:   3 days max (auto cleanup)"
 echo -e "${GREEN}✓${NC} System Time:         $(date)"
 echo -e "${GREEN}✓${NC} Boot Time Sync:      Enabled (auto-sync every reboot)"
+echo -e "${GREEN}✓${NC} Network Auto-Start:  Enabled (DHCP on every boot)"
 echo -e "${GREEN}✓${NC} Memory Leaks:        Fixed in code (gc, smart reload)"
 echo -e "${GREEN}✓${NC} Services:            Enabled and running"
 echo -e "${GREEN}✓${NC} Disk Space:          ${DISK_USAGE}% used (${DISK_FREE} free)"
@@ -458,9 +533,10 @@ echo -e "${YELLOW}Prevention Mechanisms Active:${NC}"
 echo "  1. ✓ Journal auto-cleans daily (never exceeds 100MB)"
 echo "  2. ✓ System keeps 500MB disk space free always"
 echo "  3. ✓ Time syncs automatically on every reboot"
-echo "  4. ✓ Memory is garbage collected every 60 minutes"
-echo "  5. ✓ Alarms file only reloads when actually changed"
-echo "  6. ✓ Audio resources are properly released"
+echo "  4. ✓ Network DHCP starts automatically on every reboot"
+echo "  5. ✓ Memory is garbage collected every 60 minutes"
+echo "  6. ✓ Alarms file only reloads when actually changed"
+echo "  7. ✓ Audio resources are properly released"
 echo ""
 
 echo -e "${GREEN}Your NanoPi will NEVER halt again!${NC}"
