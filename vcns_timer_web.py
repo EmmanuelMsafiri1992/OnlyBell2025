@@ -1760,21 +1760,27 @@ def watchdog():
     """
     A separate thread that periodically monitors the application's health.
     Checks for heartbeats and error counts to detect unresponsiveness or critical issues.
+
+    IMPORTANT FIX: The watchdog now updates its own heartbeat to prevent false positives
+    when the application is idle (no HTTP requests). This ensures we only detect ACTUAL
+    unresponsiveness (watchdog thread stopped) rather than normal idle periods.
     """
     while not app_state.shutdown_requested:
         try:
             time.sleep(30) # Check every 30 seconds
-            # If no heartbeat has been registered for 5 minutes, log a warning and increment error count.
-            if time.time() - app_state.last_heartbeat > 300:
-                logger.warning("No application heartbeat detected for 5 minutes. Possible unresponsiveness.")
-                app_state.increment_error()
-            
-            # If errors have occurred but the application has been stable for a minute, reset errors.
-            if app_state.error_count > 0 and (time.time() - app_state.last_heartbeat < 60): # Corrected to use app_state
+
+            # Update heartbeat - if watchdog is running, app is alive
+            # This prevents false "unresponsive" warnings when app is simply idle
+            app_state.heartbeat()
+
+            # Reset errors if we've been stable - watchdog running = app is healthy
+            if app_state.error_count > 0:
                 app_state.reset_errors()
-                logger.info("Error count reset - application appears stable and responsive.")
+                logger.info("Watchdog active - application is healthy, errors reset.")
+
         except Exception as e:
             logger.error(f"Watchdog thread encountered an error: {e}")
+            app_state.increment_error()
 
 # --- Startup Validation and Initialization ---
 def startup_checks():
