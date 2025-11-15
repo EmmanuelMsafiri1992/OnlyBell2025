@@ -120,43 +120,54 @@ echo ""
 print_step 2 "Creating network keepalive service..."
 echo ""
 
-# This service monitors and restores network connectivity every 5 minutes
-cat > /etc/systemd/system/network-keepalive.service <<'KEEPALIVE'
+# Create standalone script (avoids escaping issues in systemd)
+cat > /usr/local/bin/network-keepalive.sh <<'KEEPALIVE_SCRIPT'
+#!/bin/bash
+# Network Keepalive - Auto-recover lost network
+
+while true; do
+    INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+    if [ -z "$INTERFACE" ]; then
+        INTERFACE="eth0"
+    fi
+
+    # Check if interface has IP
+    if ! ip addr show "$INTERFACE" 2>/dev/null | grep -q "inet "; then
+        echo "$(date): Network lost on $INTERFACE - recovering..."
+        dhclient -r "$INTERFACE" 2>/dev/null || true
+        sleep 2
+        dhclient "$INTERFACE" 2>/dev/null || true
+        sleep 3
+
+        # Force NTP sync after network recovery
+        systemctl restart ntp 2>/dev/null || true
+        echo "$(date): Network recovery attempted"
+    fi
+
+    # Check DNS resolution
+    if ! nslookup google.com 8.8.8.8 >/dev/null 2>&1; then
+        echo "$(date): DNS failure detected - restarting network..."
+        dhclient -r "$INTERFACE" 2>/dev/null || true
+        sleep 2
+        dhclient "$INTERFACE" 2>/dev/null || true
+        sleep 3
+    fi
+
+    sleep 300  # Check every 5 minutes
+done
+KEEPALIVE_SCRIPT
+
+chmod +x /usr/local/bin/network-keepalive.sh
+
+# Create service file that calls the script
+cat > /etc/systemd/system/network-keepalive.service <<'KEEPALIVE_SERVICE'
 [Unit]
 Description=Network Keepalive - Auto-Recover Lost Network
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c '\
-    while true; do \
-        INTERFACE=$(ip route | grep default | awk "{print \$5}" | head -1); \
-        if [ -z "$INTERFACE" ]; then INTERFACE="eth0"; fi; \
-        \
-        # Check if interface has IP \
-        if ! ip addr show $INTERFACE 2>/dev/null | grep -q "inet "; then \
-            echo "$(date): Network lost on $INTERFACE - recovering..."; \
-            dhclient -r $INTERFACE 2>/dev/null || true; \
-            sleep 2; \
-            dhclient $INTERFACE 2>/dev/null || true; \
-            sleep 3; \
-            \
-            # Force NTP sync after network recovery \
-            systemctl restart ntp 2>/dev/null || true; \
-            echo "$(date): Network recovery attempted"; \
-        fi; \
-        \
-        # Check DNS resolution \
-        if ! nslookup google.com 8.8.8.8 >/dev/null 2>&1; then \
-            echo "$(date): DNS failure detected - restarting network..."; \
-            dhclient -r $INTERFACE 2>/dev/null || true; \
-            sleep 2; \
-            dhclient $INTERFACE 2>/dev/null || true; \
-            sleep 3; \
-        fi; \
-        \
-        sleep 300; \
-    done'
+ExecStart=/usr/local/bin/network-keepalive.sh
 Restart=always
 RestartSec=30
 StandardOutput=journal
@@ -164,7 +175,7 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-KEEPALIVE
+KEEPALIVE_SERVICE
 
 systemctl daemon-reload
 systemctl enable network-keepalive.service
