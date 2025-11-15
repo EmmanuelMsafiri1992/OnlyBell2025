@@ -255,36 +255,46 @@ echo ""
 print_step 4 "Creating enhanced NTP sync service..."
 echo ""
 
-# This service forces NTP sync every hour to prevent drift
-cat > /etc/systemd/system/ntp-force-sync.service <<'NTPSERVICE'
+# Create standalone script (avoids escaping issues in systemd)
+cat > /usr/local/bin/ntp-force-sync.sh <<'NTPSYNC_SCRIPT'
+#!/bin/bash
+# NTP Force Sync - Hourly time synchronization
+
+while true; do
+    sleep 3600  # Wait 1 hour
+
+    echo "$(date): Forcing NTP sync..."
+
+    # Stop NTP
+    systemctl stop ntp 2>/dev/null || true
+    sleep 2
+
+    # Force time sync using multiple NTP servers
+    ntpdate -s -u 216.239.35.0 2>/dev/null || \
+    ntpdate -s -u 129.6.15.28 2>/dev/null || \
+    ntpdate -s -u 132.163.96.1 2>/dev/null || true
+
+    # Restart NTP
+    systemctl start ntp 2>/dev/null || true
+
+    # Save current time for persistence
+    date +%s > /var/lib/bellnews/last_time.txt
+
+    echo "$(date): NTP sync completed"
+done
+NTPSYNC_SCRIPT
+
+chmod +x /usr/local/bin/ntp-force-sync.sh
+
+# Create service file that calls the script
+cat > /etc/systemd/system/ntp-force-sync.service <<'NTPSYNC_SERVICE'
 [Unit]
 Description=Force NTP Time Sync Every Hour
 After=network-online.target ntp.service
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c '\
-    while true; do \
-        sleep 3600; \
-        echo "$(date): Forcing NTP sync..."; \
-        \
-        # Stop NTP \
-        systemctl stop ntp 2>/dev/null || true; \
-        sleep 2; \
-        \
-        # Force time sync \
-        ntpdate -s -u 216.239.35.0 2>/dev/null || \
-        ntpdate -s -u 129.6.15.28 2>/dev/null || \
-        ntpdate -s -u 132.163.96.1 2>/dev/null || true; \
-        \
-        # Restart NTP \
-        systemctl start ntp 2>/dev/null || true; \
-        \
-        # Save current time \
-        date +%s > /var/lib/bellnews/last_time.txt; \
-        \
-        echo "$(date): NTP sync completed"; \
-    done'
+ExecStart=/usr/local/bin/ntp-force-sync.sh
 Restart=always
 RestartSec=60
 StandardOutput=journal
@@ -292,7 +302,7 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-NTPSERVICE
+NTPSYNC_SERVICE
 
 systemctl daemon-reload
 systemctl enable ntp-force-sync.service
