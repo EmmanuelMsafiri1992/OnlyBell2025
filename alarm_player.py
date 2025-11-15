@@ -3,6 +3,8 @@
 Alarm Player Service for BellNews System
 Monitors alarms.json and plays sounds at scheduled times through system speakers
 Supports: MP3, WAV, OGG, and other audio formats
+
+PATCHED: Time corruption resilience for 3-day halt fix
 """
 
 import os
@@ -296,11 +298,28 @@ class AlarmPlayer:
 
         try:
             current_mtime = os.path.getmtime(ALARMS_FILE)
+
+            # Time corruption resilience - validate file mtime is reasonable
+            # Unix epoch: 1970-01-01, we require files to be newer than 2020
+            MIN_VALID_TIME = 1577836800  # 2020-01-01 00:00:00 UTC
+            MAX_VALID_TIME = 2524608000  # 2050-01-01 00:00:00 UTC
+
+            if current_mtime < MIN_VALID_TIME or current_mtime > MAX_VALID_TIME:
+                logger.warning(f"File modification time appears corrupted: {current_mtime} (system time may be wrong)")
+                # Force reload to be safe when time is corrupted
+                self.last_file_mtime = current_mtime
+                return True
+
             if current_mtime > self.last_file_mtime:
                 self.last_file_mtime = current_mtime
                 return True
         except OSError as e:
-            logger.error(f"Error checking alarm file modification time: {e}")
+            # Handle [Errno 22] Invalid argument and other OS errors gracefully
+            if e.errno == 22:
+                logger.error(f"Invalid argument error checking file time (system time corrupted?): {e}")
+            else:
+                logger.error(f"Error checking alarm file modification time: {e}")
+            # Don't crash - just don't reload alarms this cycle
 
         return False
 
@@ -314,6 +333,13 @@ class AlarmPlayer:
             try:
                 # Get current time
                 now = datetime.now()
+
+                # Time corruption resilience - validate current time is reasonable
+                if now.year < 2020 or now.year > 2050:
+                    logger.error(f"System time is corrupted: {now} (year {now.year}) - skipping this cycle")
+                    time.sleep(10)  # Wait longer before retry
+                    continue
+
                 current_minute = now.minute
 
                 # Only check alarms once per minute (when minute changes)
@@ -352,6 +378,13 @@ class AlarmPlayer:
                 # Sleep for 5 seconds before next check
                 time.sleep(5)
 
+            except OSError as e:
+                # Handle [Errno 22] Invalid argument and other OS errors specifically
+                if e.errno == 22:
+                    logger.error(f"Invalid argument error in monitoring loop (time corruption?): {e}", exc_info=True)
+                else:
+                    logger.error(f"OS error in monitoring loop: {e}", exc_info=True)
+                time.sleep(10)  # Wait longer before retry to avoid rapid error loops
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}", exc_info=True)
                 time.sleep(5)
